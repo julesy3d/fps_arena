@@ -1,15 +1,23 @@
 {
   "name": "fps-arena-mvp",
   "version": "1.0.0",
+  "private": true,
   "description": "",
   "main": "index.js",
+  "workspaces": [ 
+    "client",
+    "server"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix client\""
+    "dev:client": "npm run dev -w client",
+    "dev:server": "npm start -w server",
+    "dev": "concurrently \"npm:dev:client\" \"npm:dev:server\""
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "dependencies": {
+  },
   "devDependencies": {
     "concurrently": "^8.2.2"
   }
