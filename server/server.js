@@ -46,7 +46,13 @@ let lobbyTimeout = null;
 
 // --- Helper Functions ---
 const broadcastGameState = () => {
-  io.emit('gameState', gameState);
+  const clientGameState = {
+    phase: gameState.phase,
+    roundWinner: gameState.roundWinner,
+    contestants: Object.values(gameState.players).filter(p => p.role === PLAYER_ROLE.CONTESTANT),
+    spectators: Object.values(gameState.players).filter(p => p.role === PLAYER_ROLE.SPECTATOR),
+  };
+  io.emit('gameState', clientGameState);
 };
 
 const initializePlayer = (socketId, name) => ({
@@ -67,8 +73,9 @@ const resetGame = () => {
         p.hp = 3;
         p.isReady = false;
         p.position = [0, 1.7, 0]; // Reset to lobby position
+        // Reset roles to spectator at the end of a round
+        p.role = PLAYER_ROLE.SPECTATOR;
     });
-    updateRoles(); // Re-evaluate roles for the new lobby
     broadcastGameState();
 };
 
@@ -92,41 +99,6 @@ const checkWinCondition = () => {
     }
 };
 
-const updateRoles = () => {
-  const playersList = Object.values(gameState.players).sort((a, b) => a.joinTime - b.joinTime); // Oldest players first
-  let contestantsCount = 0;
-
-  playersList.forEach(p => {
-    if (contestantsCount < MAX_CONTESTANTS) {
-      p.role = PLAYER_ROLE.CONTESTANT;
-      contestantsCount++;
-    } else {
-      p.role = PLAYER_ROLE.SPECTATOR;
-    }
-  });
-  checkLobbyTimeout();
-};
-
-const checkLobbyTimeout = () => {
-  if (gameState.phase !== GAME_PHASE.LOBBY) return;
-  const contestants = Object.values(gameState.players).filter(p => p.role === PLAYER_ROLE.CONTESTANT);
-  if (contestants.length === MAX_CONTESTANTS) {
-    if (!lobbyTimeout) {
-      lobbyTimeout = setTimeout(() => {
-        contestants.forEach(p => {
-          if (!p.isReady) p.role = PLAYER_ROLE.SPECTATOR;
-        });
-        clearTimeout(lobbyTimeout);
-        lobbyTimeout = null;
-        updateRoles();
-        broadcastGameState();
-      }, LOBBY_TIMEOUT_MS);
-    }
-  } else if (lobbyTimeout) {
-    clearTimeout(lobbyTimeout);
-    lobbyTimeout = null;
-  }
-};
 
 const startRound = () => {
   if (lobbyTimeout) clearTimeout(lobbyTimeout);
@@ -158,15 +130,13 @@ const checkRoundStart = () => {
 // --- Socket.IO Logic ---
 io.on('connection', (socket) => {
   console.log(`A user connected: ${socket.id}`);
-  socket.emit('gameState', gameState);
 
-  socket.on('joinGame', ({ name }) => {
-    if (gameState.players[socket.id]) return;
-    gameState.players[socket.id] = initializePlayer(socket.id, name);
-    gameState.players[socket.id].joinTime = Date.now();
-    updateRoles();
-    broadcastGameState();
-  });
+  // Create a new player object and add it to the game state.
+  const playerName = `Player_${socket.id.substring(0, 4)}`;
+  gameState.players[socket.id] = initializePlayer(socket.id, playerName);
+  gameState.players[socket.id].joinTime = Date.now();
+
+  broadcastGameState();
 
   socket.on('playerReady', () => {
     const player = gameState.players[socket.id];
@@ -174,6 +144,24 @@ io.on('connection', (socket) => {
       player.isReady = true;
       broadcastGameState();
       checkRoundStart();
+    }
+  });
+
+  socket.on('playerWantsToPlay', () => {
+    const player = gameState.players[socket.id];
+    const contestants = Object.values(gameState.players).filter(p => p.role === PLAYER_ROLE.CONTESTANT);
+    if (player && player.role === PLAYER_ROLE.SPECTATOR && contestants.length < MAX_CONTESTANTS) {
+      player.role = PLAYER_ROLE.CONTESTANT;
+      broadcastGameState();
+    }
+  });
+
+  socket.on('playerWantsToSpectate', () => {
+    const player = gameState.players[socket.id];
+    if (player && player.role === PLAYER_ROLE.CONTESTANT) {
+      player.role = PLAYER_ROLE.SPECTATOR;
+      player.isReady = false; // Reset ready status
+      broadcastGameState();
     }
   });
 
@@ -240,8 +228,6 @@ io.on('connection', (socket) => {
 
     if (wasInRound) {
         checkWinCondition();
-    } else if (wasContestant) {
-        updateRoles();
     }
     broadcastGameState();
   });
