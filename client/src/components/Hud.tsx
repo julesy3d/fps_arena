@@ -1,8 +1,13 @@
+/**
+ * @file Hud.tsx
+ * @description This component renders the Heads-Up Display (HUD), which shows game information
+ * like player lists, game status, and provides interactive buttons for players.
+ */
 "use client";
 
 import React from 'react';
 
-// Define the structure of a player object
+/** @description Defines the structure of a player object used within the HUD. */
 interface Player {
     id: string;
     name: string;
@@ -11,17 +16,32 @@ interface Player {
     isReady: boolean;
 }
 
-// Define the props for the Hud component
+/** @description Defines the props required by the Hud component. */
 interface HudProps {
-    players: Record<string, Player>;
+    /** The entire game state object from the server. */
+    gameState: {
+        phase: 'LOBBY' | 'COUNTDOWN' | 'IN_ROUND' | 'ROUND_OVER';
+        players: Record<string, Player>;
+        roundWinner: string | null;
+        countdown: number;
+    };
+    /** The socket ID of the local player. */
     ownId: string | null;
+    /** Callback function for when a contestant clicks the "Ready" button. */
     onReady: () => void;
-    winner: string | null;
+    /** Callback function for when a spectator clicks the "Become a Contestant" button. */
+    onBecomeContestant: () => void;
 }
 
-const Hud: React.FC<HudProps> = ({ players, ownId, onReady, winner }) => {
+/**
+ * @description The main HUD component. It displays player lists, game status, and action buttons.
+ */
+const Hud: React.FC<HudProps> = ({ gameState, ownId, onReady, onBecomeContestant }) => {
+    const { players, phase, roundWinner, countdown } = gameState;
+    // Find the local player's data from the players list.
     const ownPlayer = ownId ? players[ownId] : null;
 
+    // Separate players into contestants and spectators for easier rendering.
     const contestants = Object.values(players).filter(p => p.role === 'CONTESTANT');
     const spectators = Object.values(players).filter(p => p.role === 'SPECTATOR');
 
@@ -39,7 +59,7 @@ const Hud: React.FC<HudProps> = ({ players, ownId, onReady, winner }) => {
             width: '300px',
             userSelect: 'none',
         }}>
-            {winner && (
+            {phase === 'ROUND_OVER' && roundWinner && (
                 <div style={{
                     position: 'fixed',
                     top: '50%',
@@ -52,7 +72,22 @@ const Hud: React.FC<HudProps> = ({ players, ownId, onReady, winner }) => {
                     borderRadius: '15px',
                     textAlign: 'center',
                 }}>
-                    {winner} Wins!
+                    {roundWinner} Wins!
+                </div>
+            )}
+
+            {phase === 'COUNTDOWN' && (
+                 <div style={{
+                    position: 'fixed',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    fontSize: '72px',
+                    color: 'white',
+                    textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
+                    textAlign: 'center',
+                }}>
+                    {countdown}
                 </div>
             )}
 
@@ -74,7 +109,7 @@ const Hud: React.FC<HudProps> = ({ players, ownId, onReady, winner }) => {
                 ))}
             </ul>
 
-            {ownPlayer && ownPlayer.role === 'CONTESTANT' && !ownPlayer.isReady && (
+            {ownPlayer && ownPlayer.role === 'CONTESTANT' && !ownPlayer.isReady && phase === 'LOBBY' && (
                 <button
                     onClick={onReady}
                     style={{
@@ -90,6 +125,25 @@ const Hud: React.FC<HudProps> = ({ players, ownId, onReady, winner }) => {
                     }}
                 >
                     Ready
+                </button>
+            )}
+
+            {ownPlayer && ownPlayer.role === 'SPECTATOR' && contestants.length < 4 && phase === 'LOBBY' && (
+                 <button
+                    onClick={onBecomeContestant}
+                    style={{
+                        width: '100%',
+                        padding: '10px',
+                        fontSize: '18px',
+                        cursor: 'pointer',
+                        backgroundColor: 'blue',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '5px',
+                        marginTop: '15px',
+                    }}
+                >
+                    Become a Contestant
                 </button>
             )}
         </div>

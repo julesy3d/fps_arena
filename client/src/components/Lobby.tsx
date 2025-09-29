@@ -1,17 +1,27 @@
+/**
+ * @file Lobby.tsx
+ * @description This component renders the initial lobby screen where players can enter their name
+ * before joining the game session.
+ */
 "use client";
 
 import React, { useState } from 'react';
 
+/** @description Defines the props for the Lobby component. */
 interface LobbyProps {
-  onJoin: (name: string) => void;
+  /** Callback function that is triggered when the user submits their name. */
+  onSetName: (name: string) => void;
 }
 
-const Lobby: React.FC<LobbyProps> = ({ onJoin }) => {
+/**
+ * @description A simple UI component for the player to enter their name.
+ */
+const Lobby: React.FC<LobbyProps> = ({ onSetName }) => {
   const [name, setName] = useState('');
 
-  const handleJoin = () => {
+  const handleSetName = () => {
     if (name.trim()) {
-      onJoin(name.trim());
+      onSetName(name.trim());
     } else {
       alert('Please enter a name.');
     }
@@ -38,7 +48,7 @@ const Lobby: React.FC<LobbyProps> = ({ onJoin }) => {
         placeholder="Enter your name"
         value={name}
         onChange={(e) => setName(e.target.value)}
-        onKeyPress={(e) => e.key === 'Enter' && handleJoin()}
+        onKeyPress={(e) => e.key === 'Enter' && handleSetName()}
         style={{
           padding: '10px',
           fontSize: '18px',
@@ -48,14 +58,14 @@ const Lobby: React.FC<LobbyProps> = ({ onJoin }) => {
         }}
       />
       <button
-        onClick={handleJoin}
+        onClick={handleSetName}
         style={{
           padding: '10px 20px',
           fontSize: '18px',
           cursor: 'pointer',
         }}
       >
-        Join Game
+        Set Name
       </button>
     </div>
   );

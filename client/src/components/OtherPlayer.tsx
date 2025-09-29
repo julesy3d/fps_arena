@@ -1,7 +1,12 @@
+/**
+ * @file OtherPlayer.tsx
+ * @description This component renders the 3D representation of other players in the game world.
+ * It includes their character model and a name tag that always faces the camera.
+ */
 import * as THREE from "three";
 import { Billboard, Text } from "@react-three/drei";
 
-// The full player state, including properties needed for display
+/** @description The state of another player, received from the server. */
 interface PlayerState {
   id: string;
   name: string;
@@ -11,24 +16,29 @@ interface PlayerState {
   role: 'CONTESTANT' | 'SPECTATOR';
 }
 
+/**
+ * @description A component that renders another player's model and name tag based on their state.
+ * @param {object} props - The component's props.
+ * @param {PlayerState} props.player - The state of the player to render.
+ */
 export const OtherPlayer = ({ player }: { player: PlayerState }) => {
   // Safeguard: don't render if the player has no health.
-  // This is already handled in Game.tsx, but it's good practice.
+  // This is already handled in Game.tsx, but it's good practice for component isolation.
   if (player.hp <= 0) {
     return null;
   }
 
   return (
     // A group allows us to move the player model and their name tag together.
-    // The group is set to the player's world position.
+    // The group's position is updated based on the player's world position from the server.
     <group position={player.position}>
-      {/* The player's 3D model, which is rotated according to their view direction. */}
+      {/* The player's 3D model (a simple box), which is rotated according to their view direction. */}
       <mesh quaternion={new THREE.Quaternion(...player.rotation)}>
         <boxGeometry args={[1, 1.7, 1]} />
         <meshStandardMaterial color="lightblue" />
       </mesh>
 
-      {/* The player's name, rendered above their head. The Billboard ensures it always faces the camera. */}
+      {/* The Billboard component ensures its children (the Text) always face the camera. */}
       <Billboard position={[0, 1.2, 0]}>
         <Text
           fontSize={0.25}
