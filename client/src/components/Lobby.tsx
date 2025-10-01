@@ -80,6 +80,8 @@ export const Lobby = () => {
   const gamePhase = useGameStore((state) => state.gamePhase);
   const lobbyPhase = useGameStore((state) => state.lobbyPhase);
   const isVerified = useGameStore((state) => state.isVerified);
+  const isConnected = useGameStore((state) => state.isConnected);
+  const reconnectSocket = useGameStore((state) => state.reconnectSocket);
 
   const self = socket && socket.id ? players[socket.id] : null;
 
@@ -114,6 +116,20 @@ export const Lobby = () => {
           <div className="font-mono text-2xl text-yellow-400">
             {lobbyCountdown > 0 ? `00:${lobbyCountdown.toString().padStart(2, '0')}` : 'FINALIZING'}
           </div>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2">
+        {isConnected ? (
+          <>
+            <div className="h-2 w-2 rounded-full bg-green-500"></div>
+            <span className="text-xs font-mono text-gray-400">CONNECTED</span>
+          </>
+        ) : (
+          <button onClick={reconnectSocket} className="flex items-center gap-2 text-xs font-mono text-red-500 hover:text-white">
+            <div className="h-2 w-2 rounded-full bg-red-500"></div>
+            <span>OFFLINE (Click to reconnect)</span>
+          </button>
         )}
       </div>
 

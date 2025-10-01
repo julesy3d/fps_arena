@@ -13,7 +13,8 @@ export interface Player {
   health?: number;
 }
 
-interface GameState {
+// Define the type for the state properties first
+interface StoreState {
   socket: Socket | null;
   isConnected: boolean;
   gamePhase: 'LOBBY' | 'IN_ROUND';
@@ -25,16 +26,26 @@ interface GameState {
   roundTimer: number | null;
   roundWinner: { name: string; pot: number } | null;
   gladiators: Player[];
-  
+}
+
+// Define the type for the actions
+interface StoreActions {
   connectSocket: () => void;
   setPlayerName: (name: string) => void;
   clearWinner: () => void;
-  reset: () => void; // <-- 1. ADD RESET ACTION SIGNATURE
+  reset: () => void;
+  reconnectSocket: () => void;
 }
 
-const initialState = {
-  gamePhase: 'LOBBY' as 'LOBBY' | 'IN_ROUND',
-  lobbyPhase: 'GATE' as 'GATE' | 'NAME_INPUT' | 'BETTING',
+// The final GameState is the combination of state and actions
+type GameState = StoreState & StoreActions;
+
+// Now, define the initial state with the correct type
+const initialState: StoreState = {
+  socket: null,
+  isConnected: false,
+  gamePhase: 'LOBBY',
+  lobbyPhase: 'GATE',
   playerName: '',
   isVerified: false,
   players: {},
@@ -44,41 +55,34 @@ const initialState = {
   gladiators: [],
 };
 
-
 export const useGameStore = create<GameState>((set, get) => ({
-  socket: null,
-  isConnected: false,
   ...initialState,
 
   connectSocket: () => {
     if (get().socket) return;
-    const newSocket = io("http://localhost:3001");
+    const newSocket = io(process.env.NEXT_PUBLIC_SERVER_URL!);
 
     newSocket.on('connect', () => set({ isConnected: true, socket: newSocket }));
-    newSocket.on('disconnect', () => {
-      set({ isConnected: false, socket: null });
-      get().reset(); // Reset state on disconnect
-    });
+    newSocket.on('disconnect', () => get().reset());
     newSocket.on('lobby:state', (players) => set({ players }));
     newSocket.on('lobby:entrySuccess', () => set({ isVerified: true, lobbyPhase: 'NAME_INPUT' }));
     newSocket.on('lobby:countdown', (countdown) => set({ lobbyCountdown: countdown }));
-    
-    newSocket.on('round:start', (fighters: Player[]) => {
-      set({ gamePhase: 'IN_ROUND', roundWinner: null, gladiators: fighters });
-    });
-    
     newSocket.on('round:timer', (timer) => set({ roundTimer: timer }));
-
     newSocket.on('game:state', (gamePlayers) => set((state) => ({ players: { ...state.players, ...gamePlayers }})));
+    
+    // --- THE NEW UNIFIED HANDLER ---
+    newSocket.on('game:phaseChange', (data) => {
+      console.log('New game phase received:', data.phase);
+      // Always update the main game phase
+      set({ gamePhase: data.phase });
 
-    newSocket.on('round:end', (winnerData) => {
-      set({ roundWinner: winnerData, gamePhase: 'LOBBY' });
-    });
-
-    // --- 2. ADD RESET LISTENER ---
-    newSocket.on('lobby:reset', () => {
-      console.log('Lobby is resetting...');
-      get().reset();
+      if (data.phase === 'IN_ROUND') {
+        set({ gladiators: data.fighters, roundWinner: null });
+      } else if (data.phase === 'POST_ROUND') {
+        set({ roundWinner: data.winnerData });
+      } else if (data.phase === 'LOBBY') {
+        get().reset(); // Perform a full client-side reset
+      }
     });
   },
 
@@ -91,12 +95,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ roundWinner: null });
   },
 
-  // --- 3. ADD RESET ACTION IMPLEMENTATION ---
   reset: () => {
     set(state => ({
       ...initialState,
       socket: state.socket,
       isConnected: state.isConnected,
     }));
+  },
+
+  reconnectSocket: () => {
+    get().socket?.connect();
   },
 }));
