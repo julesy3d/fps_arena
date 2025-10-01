@@ -1,18 +1,18 @@
 import { create } from "zustand";
 import { io, Socket } from "socket.io-client";
 
-// Represents a single player in the game, whether they are a contender, a fighter, or just spectating.
+// Represents a single player in the game
 export interface Player {
   id: string; // The socket ID of the player.
   walletAddress: string; // The player's Solana wallet address.
   name: string; // The display name chosen by the player.
-  role: "SPECTATOR" | "CONTENDER"; // Role in the lobby auction.
-  isVerified: boolean; // True if the player has paid the entry fee.
-  betAmount: number; // The current amount this player has bet.
-  lastBetTimestamp: number | null; // The timestamp of their last bet, used for tie-breaking.
-  position: [number, number, number]; // Player's [x, y, z] position in the game world.
-  rotation: [number, number, number, number]; // Player's quaternion rotation.
-  health?: number; // Player's current health during a round.
+  role: "SPECTATOR" | "CONTENDER";
+  isVerified: boolean; // True if the player has placed an initial bet.
+  betAmount: number;
+  lastBetTimestamp: number | null;
+  position: [number, number, number];
+  rotation: [number, number, number, number];
+  health?: number;
   stats?: {
     kills: number;
     deaths: number;
@@ -20,39 +20,35 @@ export interface Player {
   };
 }
 
-// Defines the structure of the global client-side state managed by Zustand.
 interface StoreState {
-  socket: Socket | null; // The global Socket.IO client instance.
-  isConnected: boolean; // True if the socket is currently connected to the server.
-  gamePhase: "LOBBY" | "IN_ROUND" | "POST_ROUND"; // The overall phase of the game, dictated by the server.
-  lobbyPhase: "GATE" | "NAME_INPUT" | "BETTING"; // The local client's UI state within the LOBBY game phase.
-  playerName: string; // The name of the local player.
-  isVerified: boolean; // True if the local player has successfully paid the entry fee.
-  players: Record<string, Player>; // A map of all players in the game, keyed by their socket ID.
-  lobbyCountdown: number | null; // The current auction countdown time.
-  roundTimer: number | null; // The current in-round countdown time.
-  roundWinner: { name: string; pot: number } | null; // Data for the winner of the last round.
-  gladiators: Player[]; // A list of the official fighters for the current round.
+  socket: Socket | null;
+  isConnected: boolean;
+  gamePhase: "LOBBY" | "IN_ROUND" | "POST_ROUND";
+  lobbyPhase: "GATE" | "NAME_INPUT" | "BETTING";
+  playerName: string;
+  isVerified: boolean;
+  players: Record<string, Player>;
+  lobbyCountdown: number | null;
+  roundTimer: number | null;
+  roundWinner: { name: string; pot: number } | null;
+  gladiators: Player[];
 }
 
-// Defines the actions that can be called to modify the store's state.
 interface StoreActions {
-  connectSocket: () => void; // Initializes the connection to the server.
-  setPlayerName: (name: string) => void; // Sets the player's name and informs the server.
-  clearWinner: () => void; // Clears the winner data after the post-round phase.
-  reset: () => void; // Resets the client state back to its initial values, used when returning to the lobby.
-  reconnectSocket: () => void; // Attempts to reconnect the socket if it's disconnected.
+  connectSocket: () => void;
+  setPlayerName: (name: string) => void;
+  clearWinner: () => void;
+  reset: () => void;
+  reconnectSocket: () => void;
 }
 
-// The final GameState is the combination of state and actions
 type GameState = StoreState & StoreActions;
 
-// The initial state of the store when the application loads.
 const initialState: StoreState = {
   socket: null,
   isConnected: false,
   gamePhase: "LOBBY",
-  lobbyPhase: "GATE", // Initial UI state is the entry fee gate.
+  lobbyPhase: "GATE",
   playerName: "",
   isVerified: false,
   players: {},
@@ -62,7 +58,6 @@ const initialState: StoreState = {
   gladiators: [],
 };
 
-// Create the Zustand store, combining state and actions.
 export const useGameStore = create<GameState>((set, get) => ({
   ...initialState,
 
@@ -76,18 +71,24 @@ export const useGameStore = create<GameState>((set, get) => ({
     newSocket.on("disconnect", () => get().reset());
 
     newSocket.on("lobby:state", (players) => set({ players }));
-    newSocket.on("lobby:entrySuccess", ({ name }) =>
+    
+    // Server confirms the player has joined and provides their name
+    newSocket.on("lobby:joined", ({ name, isVerified }) =>
       set({
-        isVerified: true,
-        lobbyPhase: "NAME_INPUT",
         playerName: name,
+        isVerified: isVerified, // isVerified will be true if betAmount > 0
+        lobbyPhase: "BETTING", // Go straight to betting
       }),
     );
-    // ** NEW: Listen for entry failure **
-    newSocket.on("lobby:entryFailed", (message) => {
-        alert(`Entry Failed: ${message}`);
-        // This event will be used to reset the UI state in the component
+    
+    newSocket.on("lobby:betVerified", () => {
+        set({ isVerified: true });
     });
+
+    newSocket.on("lobby:betFailed", (message) => {
+        alert(`Bet Failed: ${message}`);
+    });
+
     newSocket.on("lobby:countdown", (countdown) =>
       set({ lobbyCountdown: countdown }),
     );
@@ -107,14 +108,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       } else if (phase === "POST_ROUND") {
         set({ roundWinner: data.winnerData });
       } else if (phase === "LOBBY") {
-        get().reset();
+        // Reset but keep connection details
+        const { socket, isConnected } = get();
+        set({ ...initialState, socket, isConnected, lobbyPhase: 'BETTING' });
       }
     });
   },
 
   setPlayerName: (name: string) => {
-    get().socket?.emit("player:join", name);
-    set({ playerName: name, lobbyPhase: "BETTING" });
+    get().socket?.emit("player:setName", name);
+    set({ playerName: name });
   },
 
   clearWinner: () => {
@@ -122,11 +125,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   reset: () => {
-    set((state) => ({
-      ...initialState,
-      socket: state.socket,
-      isConnected: state.isConnected,
-    }));
+    const { socket, isConnected } = get();
+    set({ ...initialState, socket, isConnected });
   },
 
   reconnectSocket: () => {
