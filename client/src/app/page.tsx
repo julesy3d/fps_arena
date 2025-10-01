@@ -13,7 +13,9 @@ interface BannerProps {
 const WinnerBanner = ({ winner, pot }: BannerProps) => (
   <div className="absolute top-1/3 left-1/2 -translate-x-1/2 z-10 bg-yellow-400 text-black p-8 border-4 border-black text-center">
     <h2 className="text-4xl font-bold">WINNER!</h2>
-    <p className="text-2xl mt-2">{winner} takes the pot of {pot} TOKENS!</p>
+    <p className="text-2xl mt-2">
+      {winner} takes the pot of {pot} TOKENS!
+    </p>
   </div>
 );
 
@@ -25,7 +27,7 @@ export default function Home() {
   const clearWinner = useGameStore((state) => state.clearWinner);
 
   // Check if the current client is one of the fighters for this round
-  const isFighter = gladiators.some(g => g.id === socket?.id);
+  const isFighter = gladiators.some((g) => g.id === socket?.id);
 
   useEffect(() => {
     if (roundWinner) {
@@ -38,11 +40,15 @@ export default function Home() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-gray-900 p-4 text-white">
-      {roundWinner && <WinnerBanner winner={roundWinner.name} pot={roundWinner.pot} />}
+      {roundWinner && (
+        <WinnerBanner winner={roundWinner.name} pot={roundWinner.pot} />
+      )}
 
-      {gamePhase === 'IN_ROUND' && isFighter && <div className="crosshair">+</div>}
+      {gamePhase === "IN_ROUND" && isFighter && (
+        <div className="crosshair">+</div>
+      )}
 
-      {gamePhase === 'IN_ROUND' && isFighter ? <GameScene /> : <Lobby />}
+      {gamePhase === "IN_ROUND" && isFighter ? <GameScene /> : <Lobby />}
     </main>
   );
 }

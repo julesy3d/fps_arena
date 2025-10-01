@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 
 // Define the shape of our map so TypeScript knows what to expect.
 // It maps any string key to a string value.
 const keyActionMap: Record<string, string> = {
-  KeyW: 'moveForward',
-  KeyS: 'moveBackward',
-  KeyA: 'moveLeft',
-  KeyD: 'moveRight',
-  Space: 'jump',
+  KeyW: "moveForward",
+  KeyS: "moveBackward",
+  KeyA: "moveLeft",
+  KeyD: "moveRight",
+  Space: "jump",
 };
 
 const actionByKey = (key: string) => {
@@ -40,12 +40,12 @@ export const useKeyboardControls = () => {
       }
     };
 
-    document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('keyup', handleKeyUp);
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keyup", handleKeyUp);
 
     return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('keyup', handleKeyUp);
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("keyup", handleKeyUp);
     };
   }, []);
 

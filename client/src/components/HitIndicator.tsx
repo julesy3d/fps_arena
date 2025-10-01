@@ -14,15 +14,15 @@ export const HitIndicator = () => {
         setTimeout(() => setShow(false), 200);
       }
     };
-    socket?.on('player:hit', onPlayerHit);
+    socket?.on("player:hit", onPlayerHit);
     return () => {
-      socket?.off('player:hit', onPlayerHit);
+      socket?.off("player:hit", onPlayerHit);
     };
   }, [socket]);
 
   return (
-    <div 
-      className={`pointer-events-none fixed inset-0 z-20 bg-red-700 transition-opacity duration-200 ${show ? 'opacity-30' : 'opacity-0'}`}
+    <div
+      className={`pointer-events-none fixed inset-0 z-20 bg-red-700 transition-opacity duration-200 ${show ? "opacity-30" : "opacity-0"}`}
     />
   );
 };
