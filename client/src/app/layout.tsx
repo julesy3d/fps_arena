@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { SocketInitializer } from "@/components/SocketInitializer"; // <-- IMPORT
+import { SocketInitializer } from "@/components/SocketInitializer";
+import { WalletContextProvider } from "@/components/WalletContextProvider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -18,8 +19,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <SocketInitializer /> {/* <-- ADD COMPONENT HERE */}
-        {children}
+        <WalletContextProvider>
+          <SocketInitializer />
+          {children}
+        </WalletContextProvider>
       </body>
     </html>
   );
