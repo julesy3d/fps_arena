@@ -1,5 +1,5 @@
-import * as THREE from 'three';
-import { Billboard, Plane } from '@react-three/drei'; // <-- Import Billboard and Plane
+import * as THREE from "three";
+import { Billboard, Plane } from "@react-three/drei"; // <-- Import Billboard and Plane
 
 const IMPACT_COLOR = "#ff0000";
 
@@ -17,9 +17,9 @@ export const Impact = ({ point, normal }: ImpactProps) => {
   return (
     <Billboard position={finalPosition}>
       <Plane args={[0.5, 0.5]}>
-        <meshStandardMaterial 
-          color={IMPACT_COLOR} 
-          transparent 
+        <meshStandardMaterial
+          color={IMPACT_COLOR}
+          transparent
           opacity={0.8}
           depthTest={false}
         />
