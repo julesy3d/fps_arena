@@ -11,197 +11,150 @@ import {
   PublicKey,
 } from "@solana/web3.js";
 
-const LobbyGate = () => {
-  const { connection } = useConnection();
-  const { connected, publicKey, sendTransaction } = useWallet();
-  const socket = useGameStore((state) => state.socket);
 
-  const [isPaying, setIsPaying] = useState(false);
-  const [amount, setAmount] = useState("1000");
-
-  // ** NEW: Listen for server-side verification failure **
-  useEffect(() => {
-    if (!socket) return;
-    
-    const handleEntryFailed = () => {
-        setIsPaying(false); // Reset button on failure
-    };
-
-    socket.on("lobby:entryFailed", handleEntryFailed);
-
-    return () => {
-        socket.off("lobby:entryFailed", handleEntryFailed);
-    };
-  }, [socket]);
-
-
-  const handleEnter = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!publicKey || !socket) return;
-
-    const numAmount = parseInt(amount, 10);
-    if (numAmount >= 1000) {
-      setIsPaying(true);
-      try {
-        const lamportsToSend = numAmount;
-        const treasuryAddress = new PublicKey(process.env.NEXT_PUBLIC_TREASURY_WALLET_ADDRESS!);
-
-        const transaction = new Transaction().add(
-          SystemProgram.transfer({
-            fromPubkey: publicKey,
-            toPubkey: treasuryAddress,
-            lamports: lamportsToSend,
-          })
-        );
-
-        const signature = await sendTransaction(transaction, connection);
-        console.log("Transaction sent:", signature);
-        await connection.confirmTransaction(signature, "processed");
-        console.log("Transaction confirmed:", signature);
-
-        socket.emit("player:verifyEntry", {
-          signature,
-          walletAddress: publicKey.toBase58(),
-          amount: lamportsToSend,
-        });
-
-      } catch (error) {
-        console.error("Payment failed:", error);
-        // User rejected or transaction failed before sending to server
-        alert("Payment failed. Please try again.");
-        setIsPaying(false); // Reset button
-      }
-    }
-  };
-
-  if (!connected || !publicKey) {
-    return (
-      <div className="flex flex-col items-center gap-4">
-        <h2 className="text-2xl font-bold">Connect Wallet to Join</h2>
-        <p className="text-gray-400">
-          You need a Solana wallet to enter the Coliseum.
-        </p>
-        <WalletMultiButton />
-      </div>
-    );
-  }
-
-  return (
-    <form onSubmit={handleEnter} className="flex flex-col items-center gap-4">
-      <h2 className="text-2xl font-bold">Join the Auction</h2>
-      <p className="text-gray-400">
-        Place an initial bet to enter (min. 1000 Lamports)
-      </p>
-      <div className="flex gap-2 w-full">
-        <input
-          type="number"
-          min="1000"
-          step="100"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          className="w-1/3 border border-gray-700 bg-gray-900 p-3 text-center font-mono"
-          disabled={isPaying}
-        />
-        <button
-          type="submit"
-          disabled={isPaying || parseInt(amount) < 1000}
-          className="w-2/3 border border-yellow-700 bg-yellow-900 p-3 font-bold text-white hover:bg-yellow-800 disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
-        >
-          {isPaying ? "VERIFYING ON-CHAIN..." : "PAY & ENTER"}
-        </button>
-      </div>
-      <p className="text-xs text-gray-500">
-        This will send real SOL on Devnet. Make sure you have Devnet SOL.
-      </p>
-    </form>
-  );
-};
-
-
+/**
+ * The BettingPanel is now the primary action component for contenders.
+ */
 const BettingPanel = ({ self }: { self: Player | null }) => {
+  const { connection } = useConnection();
+  const { publicKey, sendTransaction } = useWallet();
   const socket = useGameStore((state) => state.socket);
-  const [betAmount, setBetAmount] = useState("100");
+
+  const [betAmount, setBetAmount] = useState("1000"); // Default to 1000 lamports
   const [isBetting, setIsBetting] = useState(false);
 
   useEffect(() => {
+    if (!socket) return;
+    const handleBetFailed = () => setIsBetting(false);
+    socket.on("lobby:betFailed", handleBetFailed);
+    return () => {
+      socket.off("lobby:betFailed", handleBetFailed);
+    };
+  }, [socket]);
+
+  useEffect(() => {
+    // If the bet was successful, the server will update the player state,
+    // which triggers a re-render here. We can reset the button.
     if (isBetting) {
       setIsBetting(false);
     }
   }, [self?.betAmount]);
 
-  const handleIncreaseBet = () => {
+  const handlePlaceBet = async () => {
+    if (!publicKey || !socket) return;
+
     const amount = parseInt(betAmount, 10);
-    if (socket && amount > 0 && !isBetting) {
+    if (amount > 0 && !isBetting) {
       setIsBetting(true);
-      socket.emit("player:placeBet", amount);
+      try {
+        const treasuryAddress = new PublicKey(process.env.NEXT_PUBLIC_TREASURY_WALLET_ADDRESS!);
+        const transaction = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: publicKey,
+            toPubkey: treasuryAddress,
+            lamports: amount,
+          })
+        );
+
+        const signature = await sendTransaction(transaction, connection);
+        await connection.confirmTransaction(signature, "processed");
+
+        // Ask server to verify the bet transaction
+        socket.emit("player:verifyBet", {
+          signature,
+          walletAddress: publicKey.toBase58(),
+          amount,
+        });
+      } catch (error) {
+        console.error("Betting failed:", error);
+        alert("Bet transaction failed. Please try again.");
+        setIsBetting(false);
+      }
     }
   };
 
   return (
     <div className="flex flex-col items-center gap-4">
+      <h2 className="text-2xl font-bold">Place a Bet to Fight</h2>
+      <p className="text-gray-400">Your bet determines your rank. Top 4 bidders get to fight.</p>
         <div className="flex gap-2 w-full">
             <input
                 type="number"
-                step={100}
+                min="1000"
+                step="100"
                 value={betAmount}
                 onChange={(e) => setBetAmount(e.target.value)}
                 className="w-1/3 border border-gray-700 bg-gray-900 p-3 text-center font-mono"
                 disabled={isBetting}
             />
             <button
-                onClick={handleIncreaseBet}
+                onClick={handlePlaceBet}
                 disabled={isBetting || parseInt(betAmount) <= 0}
                 className="w-2/3 border p-3 font-bold text-white enabled:border-green-700 enabled:bg-green-900 enabled:hover:bg-green-800 disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
             >
-                {isBetting ? "INCREASING..." : "INCREASE BET"}
+                {isBetting ? "VERIFYING BET..." : "PLACE BET"}
             </button>
         </div>
         <p className="text-xs text-gray-500">
-            (Note: Increasing bets is not yet on-chain)
+          This will send real SOL on Devnet. Outbid bets are burned.
         </p>
     </div>
   );
 };
+
 
 export const Lobby = () => {
   const socket = useGameStore((state) => state.socket);
   const players = useGameStore((state) => state.players);
   const lobbyCountdown = useGameStore((state) => state.lobbyCountdown);
   const gamePhase = useGameStore((state) => state.gamePhase);
-  const lobbyPhase = useGameStore((state) => state.lobbyPhase);
-  const isVerified = useGameStore((state) => state.isVerified);
   const isConnected = useGameStore((state) => state.isConnected);
   const reconnectSocket = useGameStore((state) => state.reconnectSocket);
+  const { publicKey, connected } = useWallet();
+
   const self = socket && socket.id ? players[socket.id] : null;
 
-  // ** NEW: State to prevent hydration mismatch **
   const [hasMounted, setHasMounted] = useState(false);
   useEffect(() => {
     setHasMounted(true);
   }, []);
 
+  // Effect to automatically join the lobby when wallet connects
+  useEffect(() => {
+    if (socket && connected && publicKey && !self) {
+      socket.emit("player:joinWithWallet", { walletAddress: publicKey.toBase58() });
+    }
+  }, [socket, connected, publicKey, self]);
+
   const { fighters, contenders } = useMemo(() => {
     const playerArray = Object.values(players);
     const allContenders = playerArray
-      .filter((p) => p.role === "CONTENDER")
+      .filter((p) => p.betAmount > 0) // Only players who have bet are contenders for a spot
       .sort(
         (a, b) =>
-          b.betAmount - (a.betAmount || 0) ||
+          b.betAmount - a.betAmount ||
           (a.lastBetTimestamp || 0) - (b.lastBetTimestamp || 0),
       );
     const top4 = allContenders.slice(0, 4);
-    const everyoneElse = playerArray
+    const everyoneElse = Object.values(players)
       .filter((p) => !top4.some((top) => top.id === p.id))
       .sort((a, b) => (b.betAmount || 0) - (a.betAmount || 0));
     return { fighters: top4, contenders: everyoneElse };
   }, [players]);
 
   const renderActionPanel = () => {
-    if (!hasMounted) return null; // Don't render wallet-dependent UI on the server
-    if (!isVerified) return <LobbyGate />;
-    if (lobbyPhase === "NAME_INPUT") return <NameInput />;
-    if (lobbyPhase === "BETTING") return <BettingPanel self={self} />;
-    return <LobbyGate />;
+    if (!hasMounted) return null;
+    if (!connected) {
+        return (
+             <div className="flex flex-col items-center gap-4">
+                <h2 className="text-2xl font-bold">Connect Wallet to Join</h2>
+                <p className="text-gray-400">PotShot.gg is a web3 FPS arena.</p>
+                <WalletMultiButton />
+            </div>
+        )
+    }
+    // Once connected, show the betting panel
+    return <BettingPanel self={self} />;
   };
 
   return (
@@ -232,7 +185,6 @@ export const Lobby = () => {
             <span>OFFLINE (Click to reconnect)</span>
           </button>
         )}
-        {/* Only render the wallet button on the client */}
         {hasMounted && <WalletMultiButton />}
       </div>
 

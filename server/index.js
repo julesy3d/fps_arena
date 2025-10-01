@@ -46,13 +46,14 @@ let activeFighterIds = new Set();
 let roundPot = 0;
 
 // --- Game Constants ---
-const MAIN_COUNTDOWN_SECONDS = 1;
+const MAIN_COUNTDOWN_SECONDS = 30;
 const OVERTIME_SECONDS = 10;
 const ROUND_DURATION_SECONDS = 60;
+const MIN_PLAYERS_TO_START = 4; // Set to 4 for production
 
 // --- UTILITY & BROADCAST FUNCTIONS ---
-const getContenders = () => Object.values(players).filter((p) => p.role === "CONTENDER");
-const getTop4ContenderIds = () => getContenders().sort((a, b) => b.betAmount - a.betAmount || (a.lastBetTimestamp || 0) - (b.lastBetTimestamp || 0)).slice(0, 2).map((p) => p.id);
+const getContendersWithBets = () => Object.values(players).filter((p) => p.betAmount > 0);
+const getTopFighterIds = () => getContendersWithBets().sort((a, b) => b.betAmount - a.betAmount || (a.lastBetTimestamp || 0) - (b.lastBetTimestamp || 0)).slice(0, MIN_PLAYERS_TO_START).map((p) => p.id);
 const broadcastLobbyState = () => io.emit("lobby:state", players);
 const broadcastLobbyCountdown = () => io.emit("lobby:countdown", lobbyCountdown);
 const broadcastRoundTimer = () => io.emit("round:timer", roundTimer);
@@ -70,28 +71,25 @@ const stopLobbyCountdown = () => {
 const finalizeAuction = () => {
   stopLobbyCountdown();
   gamePhase = "IN_ROUND";
-  const top4Ids = getTop4ContenderIds();
+  const fighterIds = getTopFighterIds();
   roundPot = 0;
   activeFighterIds.clear();
   const finalFighters = [];
 
-  for (const id of top4Ids) {
+  for (const id of fighterIds) {
     const player = players[id];
     if (player) {
       roundPot += player.betAmount;
       activeFighterIds.add(player.id);
       finalFighters.push(player);
       incrementPlayerStat(player.walletAddress, "total_games_played", 1);
-      incrementPlayerStat(player.walletAddress, "total_tokens_wagered", player.betAmount);
     }
   }
 
   for (const player of Object.values(players)) {
-    if (!activeFighterIds.has(player.id) && player.role === "CONTENDER") {
-      console.log(`Burning ${player.betAmount} tokens for ${player.name}`);
-      incrementPlayerStat(player.walletAddress, "total_tokens_wagered", player.betAmount);
+    if (player.betAmount > 0 && !activeFighterIds.has(player.id)) {
+      console.log(`Outbid player ${player.name}'s bet of ${player.betAmount} is burned.`);
       incrementPlayerStat(player.walletAddress, "net_winnings", -player.betAmount);
-      player.betAmount = 0;
     }
   }
 
@@ -113,16 +111,16 @@ const startLobbyCountdown = (duration) => {
   }, 1000);
 };
 
-const checkAndManageCountdown = (previousTop4Ids = []) => {
-  const contenders = getContenders();
-  if (contenders.length < 2) {
+const checkAndManageCountdown = (previousTopFighterIds = []) => {
+  const contendersWithBets = getContendersWithBets();
+  if (contendersWithBets.length < MIN_PLAYERS_TO_START) {
     stopLobbyCountdown();
   } else {
     if (!lobbyCountdownIntervalId) {
       startLobbyCountdown(MAIN_COUNTDOWN_SECONDS);
     } else {
-      const currentTop4Ids = getTop4ContenderIds();
-      if (JSON.stringify(previousTop4Ids) !== JSON.stringify(currentTop4Ids)) {
+      const currentTopFighterIds = getTopFighterIds();
+      if (JSON.stringify(previousTopFighterIds) !== JSON.stringify(currentTopFighterIds)) {
         lobbyCountdown += OVERTIME_SECONDS;
       }
     }
@@ -131,91 +129,92 @@ const checkAndManageCountdown = (previousTop4Ids = []) => {
 
 // --- GAME ROUND LOGIC ---
 const endRound = (winner) => {
-  if (gameLoopIntervalId) clearInterval(gameLoopIntervalId);
-  if (roundTimerIntervalId) clearInterval(roundTimerIntervalId);
-  gameLoopIntervalId = null;
-  roundTimerIntervalId = null;
-  roundTimer = null;
-
-  gamePhase = "POST_ROUND";
-  console.log(`Entering POST_ROUND. Winner: ${winner ? winner.name : 'None'}`);
-
-  if (winner) {
-    incrementPlayerStat(winner.walletAddress, "wins", 1);
-    incrementPlayerStat(winner.walletAddress, "net_winnings", roundPot);
-  }
+    if (gameLoopIntervalId) clearInterval(gameLoopIntervalId);
+    if (roundTimerIntervalId) clearInterval(roundTimerIntervalId);
+    gameLoopIntervalId = null;
+    roundTimerIntervalId = null;
+    roundTimer = null;
   
-  const fighterIdsAtStart = new Set(activeFighterIds);
-  fighterIdsAtStart.forEach((fighterId) => {
-    const fighter = Object.values(players).find(p => p.id === fighterId);
-    if (fighter && (!winner || fighter.id !== winner.id)) {
-      incrementPlayerStat(fighter.walletAddress, "deaths", 1);
+    gamePhase = "POST_ROUND";
+    console.log(`Entering POST_ROUND. Winner: ${winner ? winner.name : 'None'}`);
+  
+    if (winner) {
+      incrementPlayerStat(winner.walletAddress, "wins", 1);
+      incrementPlayerStat(winner.walletAddress, "net_winnings", roundPot);
     }
-  });
-
-  io.emit("game:phaseChange", {
-    phase: "POST_ROUND",
-    winnerData: { name: winner ? winner.name : "DRAW", pot: roundPot },
-  });
-
-  setTimeout(() => {
-    console.log("Resetting to LOBBY phase...");
-    gamePhase = "LOBBY";
-    Object.values(players).forEach(p => {
-        p.role = "SPECTATOR";
-        p.betAmount = 0;
-        p.isVerified = false;
-    });
-    activeFighterIds.clear();
-
-    io.emit("game:phaseChange", { phase: "LOBBY" });
-    broadcastLobbyState();
-    checkAndManageCountdown();
-  }, 10000);
-};
-
-const startGameRound = () => {
-  roundTimer = ROUND_DURATION_SECONDS;
-  const currentFighters = Object.values(players).filter((p) => activeFighterIds.has(p.id));
-  currentFighters.forEach((fighter) => {
-    fighter.position = [Math.random() * 10 - 5, 0, Math.random() * 10 - 5];
-    fighter.health = 3;
-    fighter.input = { moveForward: false, moveBackward: false, moveLeft: false, moveRight: false };
-  });
-
-  roundTimerIntervalId = setInterval(() => {
-    const livingFighters = Object.values(players).filter((p) => activeFighterIds.has(p.id) && p.health > 0);
-    if (roundTimer > 0) {
-      roundTimer--;
-      broadcastRoundTimer();
-    } else {
-      clearInterval(roundTimerIntervalId);
-      const winner = livingFighters.length > 0 ? livingFighters[Math.floor(Math.random() * livingFighters.length)] : null;
-      endRound(winner);
-    }
-  }, 1000);
-
-  gameLoopIntervalId = setInterval(() => {
-    const currentFighters = Object.values(players).filter((p) => activeFighterIds.has(p.id));
-    currentFighters.forEach((p) => {
-      const input = p.input;
-      if (p.health > 0 && input) {
-        const moveDirection = { x: 0, z: 0 };
-        if (input.moveForward) moveDirection.z -= 1;
-        if (input.moveBackward) moveDirection.z += 1;
-        if (input.moveLeft) moveDirection.x -= 1;
-        if (input.moveRight) moveDirection.x += 1;
-
-        if (moveDirection.x !== 0 || moveDirection.z !== 0) {
-          p.position[0] += moveDirection.x * 5 * (1 / 20);
-          p.position[2] += moveDirection.z * 5 * (1 / 20);
-        }
+    
+    const fighterIdsAtStart = new Set(activeFighterIds);
+    fighterIdsAtStart.forEach((fighterId) => {
+      const fighter = Object.values(players).find(p => p.id === fighterId);
+      if (fighter && (!winner || fighter.id !== winner.id)) {
+        incrementPlayerStat(fighter.walletAddress, "deaths", 1);
       }
-      updatePlayerHitbox(p);
     });
-    io.emit("game:state", currentFighters.reduce((acc, p) => ({ ...acc, [p.id]: p }), {}));
-  }, 1000 / 20);
-};
+  
+    io.emit("game:phaseChange", {
+      phase: "POST_ROUND",
+      winnerData: { name: winner ? winner.name : "DRAW", pot: roundPot },
+    });
+  
+    setTimeout(() => {
+      console.log("Resetting to LOBBY phase...");
+      gamePhase = "LOBBY";
+      // On reset, keep players but clear their bets for the new round
+      Object.values(players).forEach(p => {
+          p.betAmount = 0;
+          p.isVerified = false; // Player must bet again to be "verified" for the next round's countdown
+          p.lastBetTimestamp = null;
+      });
+      activeFighterIds.clear();
+  
+      io.emit("game:phaseChange", { phase: "LOBBY" });
+      broadcastLobbyState();
+      checkAndManageCountdown();
+    }, 10000);
+  };
+  
+  const startGameRound = () => {
+    roundTimer = ROUND_DURATION_SECONDS;
+    const currentFighters = Object.values(players).filter((p) => activeFighterIds.has(p.id));
+    currentFighters.forEach((fighter) => {
+      fighter.position = [Math.random() * 10 - 5, 0, Math.random() * 10 - 5];
+      fighter.health = 3;
+      fighter.input = { moveForward: false, moveBackward: false, moveLeft: false, moveRight: false };
+    });
+  
+    roundTimerIntervalId = setInterval(() => {
+      const livingFighters = Object.values(players).filter((p) => activeFighterIds.has(p.id) && p.health > 0);
+      if (roundTimer > 0) {
+        roundTimer--;
+        broadcastRoundTimer();
+      } else {
+        clearInterval(roundTimerIntervalId);
+        const winner = livingFighters.length > 0 ? livingFighters[Math.floor(Math.random() * livingFighters.length)] : null;
+        endRound(winner);
+      }
+    }, 1000);
+  
+    gameLoopIntervalId = setInterval(() => {
+      const currentFighters = Object.values(players).filter((p) => activeFighterIds.has(p.id));
+      currentFighters.forEach((p) => {
+        const input = p.input;
+        if (p.health > 0 && input) {
+          const moveDirection = { x: 0, z: 0 };
+          if (input.moveForward) moveDirection.z -= 1;
+          if (input.moveBackward) moveDirection.z += 1;
+          if (input.moveLeft) moveDirection.x -= 1;
+          if (input.moveRight) moveDirection.x += 1;
+  
+          if (moveDirection.x !== 0 || moveDirection.z !== 0) {
+            p.position[0] += moveDirection.x * 5 * (1 / 20);
+            p.position[2] += moveDirection.z * 5 * (1 / 20);
+          }
+        }
+        updatePlayerHitbox(p);
+      });
+      io.emit("game:state", currentFighters.reduce((acc, p) => ({ ...acc, [p.id]: p }), {}));
+    }, 1000 / 20);
+  };
 
 // --- MAIN CONNECTION HANDLER ---
 io.on("connection", (socket) => {
@@ -224,38 +223,71 @@ io.on("connection", (socket) => {
   socket.emit("lobby:state", players);
   socket.emit("lobby:countdown", lobbyCountdown);
 
-  socket.on("player:verifyEntry", async ({ signature, walletAddress, amount }) => {
+  socket.on("player:joinWithWallet", async ({ walletAddress }) => {
+    if (!walletAddress || Object.values(players).find(p => p.walletAddress === walletAddress)) return;
+
+    const playerData = await getPlayerStats(walletAddress);
+    if (!playerData) return;
+
+    let playerName = playerData.username;
+    if (!playerName || playerName === "Gladiator") {
+        playerName = `${walletAddress.substring(0, 4)}...${walletAddress.substring(walletAddress.length - 4)}`;
+    }
+
+    players[socket.id] = {
+      id: socket.id,
+      walletAddress: walletAddress,
+      name: playerName,
+      role: "CONTENDER",
+      isVerified: false,
+      betAmount: 0,
+      lastBetTimestamp: null,
+      position: [0, 0, 0], rotation: [0, 0, 0, 1],
+      stats: { kills: playerData.kills, deaths: playerData.deaths, wins: playerData.wins }
+    };
+    
+    socket.emit("lobby:joined", { name: players[socket.id].name, isVerified: players[socket.id].isVerified });
+    broadcastLobbyState();
+  });
+
+  socket.on("player:setName", (playerName) => {
+    const player = players[socket.id];
+    if (player) {
+      player.name = playerName;
+      updatePlayerStats(player.walletAddress, { username: playerName });
+      broadcastLobbyState();
+    }
+  });
+
+  socket.on("player:verifyBet", async ({ signature, walletAddress, amount }) => {
+      const player = players[socket.id];
+      if (!player || player.walletAddress !== walletAddress) {
+          return socket.emit("lobby:betFailed", "Player not found or wallet mismatch.");
+      }
+      
+      const previousTopFighterIds = getTopFighterIds();
+      
       try {
-          console.log(`Verifying entry for ${walletAddress} with signature ${signature}`);
+          console.log(`Verifying bet for ${walletAddress} with signature ${signature}`);
           const tx = await connection.getTransaction(signature, { maxSupportedTransactionVersion: 0 });
 
           if (!tx) throw new Error("Transaction not found.");
           if (tx.meta?.err) throw new Error(`Transaction failed on-chain: ${JSON.stringify(tx.meta.err)}`);
 
           const accountKeys = tx.transaction.message.staticAccountKeys.map(key => key.toBase58());
-          
           const transferInstruction = tx.transaction.message.instructions.find(ix => {
-              if (!ix.programIdIndex) return false;
               const programId = accountKeys[ix.programIdIndex];
               return programId === SystemProgram.programId.toBase58();
           });
 
-          if (!transferInstruction) {
-              throw new Error("SystemProgram.transfer instruction not found in transaction.");
-          }
+          if (!transferInstruction) throw new Error("SystemProgram.transfer instruction not found.");
          
-          // ** THE FIX: Convert the decoded Uint8Array from bs58 into a Node.js Buffer **
           const decodedData = Buffer.from(bs58.decode(transferInstruction.data));
           const instructionType = decodedData.readUInt32LE(0);
-
-          if (instructionType !== 2) { // 2 = SystemProgram Transfer
-            throw new Error("Instruction is not a SystemProgram.transfer");
-          }
+          if (instructionType !== 2) throw new Error("Instruction is not a transfer.");
 
           const sentAmount = decodedData.readBigUInt64LE(4);
-          if (BigInt(amount) !== sentAmount) {
-              throw new Error(`Amount mismatch. Expected ${amount}, got ${sentAmount.toString()}`);
-          }
+          if (BigInt(amount) !== sentAmount) throw new Error(`Amount mismatch. Expected ${amount}, got ${sentAmount.toString()}`);
           
           const fromAddress = accountKeys[transferInstruction.accounts[0]];
           const toAddress = accountKeys[transferInstruction.accounts[1]];
@@ -264,66 +296,20 @@ io.on("connection", (socket) => {
               throw new Error("Transaction sender or receiver is incorrect.");
           }
 
-          console.log(`✅ Verification successful for ${walletAddress}`);
+          console.log(`✅ Bet verification successful for ${walletAddress}`);
 
-          const existingPlayer = Object.values(players).find(p => p.walletAddress === walletAddress);
-          if (existingPlayer) return;
-
-          const playerData = await getPlayerStats(walletAddress);
-          if (!playerData) {
-              socket.emit("lobby:entryFailed", "Could not retrieve player data.");
-              return;
-          }
-
-          let playerName = playerData.username;
-          if (!playerName || playerName === "Gladiator") {
-              playerName = `${walletAddress.substring(0, 4)}...${walletAddress.substring(walletAddress.length - 4)}`;
-          }
-
-          players[socket.id] = {
-              id: socket.id,
-              walletAddress: walletAddress,
-              name: playerName,
-              role: "CONTENDER",
-              isVerified: true,
-              betAmount: amount,
-              lastBetTimestamp: Date.now(),
-              position: [0, 0, 0],
-              rotation: [0, 0, 0, 1],
-              stats: { kills: playerData.kills, deaths: playerData.deaths, wins: playerData.wins }
-          };
-
-          socket.emit("lobby:entrySuccess", { name: players[socket.id].name });
+          player.betAmount += amount;
+          player.lastBetTimestamp = Date.now();
+          player.isVerified = true;
+          
+          socket.emit("lobby:betVerified");
           broadcastLobbyState();
-          checkAndManageCountdown(getTop4ContenderIds());
+          checkAndManageCountdown(previousTopFighterIds);
 
       } catch (error) {
-          console.error("Verification failed:", error);
-          socket.emit("lobby:entryFailed", `On-chain verification failed: ${error.message}`);
+          console.error("Bet verification failed:", error);
+          socket.emit("lobby:betFailed", `On-chain verification failed: ${error.message}`);
       }
-  });
-
-
-  socket.on("player:join", (playerName) => {
-    const player = players[socket.id];
-    if (player && player.isVerified) {
-      player.name = playerName;
-      updatePlayerStats(player.walletAddress, { username: playerName });
-      broadcastLobbyState();
-    }
-  });
-
-  socket.on("player:placeBet", async (amount) => {
-    const player = players[socket.id];
-    if (player && player.role === "CONTENDER") {
-      const amountNum = parseInt(amount, 10);
-      if (isNaN(amountNum) || amountNum <= 0) return;
-      
-      const previousTop4 = getTop4ContenderIds();
-      player.betAmount += amountNum;
-      broadcastLobbyState();
-      checkAndManageCountdown(previousTop4);
-    }
   });
 
   socket.on("disconnect", () => {
@@ -332,7 +318,7 @@ io.on("connection", (socket) => {
       removePlayerHitbox(socket.id);
       delete players[socket.id];
       broadcastLobbyState();
-      checkAndManageCountdown(getTop4ContenderIds());
+      checkAndManageCountdown(getTopFighterIds());
     }
   });
 
