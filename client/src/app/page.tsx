@@ -31,7 +31,7 @@ export default function Home() {
     if (roundWinner) {
       const timer = setTimeout(() => {
         clearWinner();
-      }, 5000); // Show winner for 5 seconds
+      }, 10000); // Show winner for 5 seconds
       return () => clearTimeout(timer);
     }
   }, [roundWinner, clearWinner]);
@@ -39,6 +39,9 @@ export default function Home() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-gray-900 p-4 text-white">
       {roundWinner && <WinnerBanner winner={roundWinner.name} pot={roundWinner.pot} />}
+
+      {gamePhase === 'IN_ROUND' && isFighter && <div className="crosshair">+</div>}
+
       {gamePhase === 'IN_ROUND' && isFighter ? <GameScene /> : <Lobby />}
     </main>
   );

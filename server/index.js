@@ -2,34 +2,36 @@ import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
 import { bettingService } from './bettingService.js';
+import { updatePlayerHitbox, removePlayerHitbox, performRaycast } from './physics.js';
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: ["http://localhost:3000", "https://txfhjhrt-3000.uks1.devtunnels.ms"], methods: ["GET", "POST"] } });
+const io = new Server(server, { cors: { origin: ["http://localhost:3000", "https://txfhjhrt-3000.uks1.devtunnels.ms", "https://scaling-space-acorn-rrp7w7j9xwphwj47-3000.app.github.dev"], methods: ["GET", "POST"] } });
 
 const PORT = 3001;
 let players = {};
 
-// Game State Variables
+// --- Game State Variables ---
+let gamePhase = 'LOBBY';
 let lobbyCountdown = null;
 let lobbyCountdownIntervalId = null;
 let roundTimer = null;
 let gameLoopIntervalId = null;
-let activeFighters = [];
 let roundTimerIntervalId = null;
+let activeFighterIds = new Set();
 
-const MAIN_COUNTDOWN_SECONDS = 30;
+const MAIN_COUNTDOWN_SECONDS = 1;
 const OVERTIME_SECONDS = 10;
-const ROUND_DURATION_SECONDS = 60;
+const ROUND_DURATION_SECONDS = 600; // Restored to 10 minutes
 
-// UTILITY & BROADCAST FUNCTIONS
+// --- UTILITY & BROADCAST FUNCTIONS ---
 const getContenders = () => Object.values(players).filter(p => p.role === 'CONTENDER');
-const getTop4ContenderIds = () => getContenders().sort((a, b) => b.betAmount - a.betAmount || a.lastBetTimestamp - b.lastBetTimestamp).slice(0, 4).map(p => p.id);
+const getTop4ContenderIds = () => getContenders().sort((a, b) => b.betAmount - a.betAmount || (a.lastBetTimestamp || 0) - (b.lastBetTimestamp || 0)).slice(0, 2).map(p => p.id);
 const broadcastLobbyState = () => io.emit('lobby:state', players);
 const broadcastLobbyCountdown = () => io.emit('lobby:countdown', lobbyCountdown);
 const broadcastRoundTimer = () => io.emit('round:timer', roundTimer);
 
-// LOBBY LOGIC
+// --- LOBBY LOGIC ---
 const stopLobbyCountdown = () => {
   if (lobbyCountdownIntervalId) {
     clearInterval(lobbyCountdownIntervalId);
@@ -41,22 +43,28 @@ const stopLobbyCountdown = () => {
 
 const finalizeAuction = () => {
   stopLobbyCountdown();
-  const top4Ids = new Set(getTop4ContenderIds());
+  gamePhase = 'IN_ROUND'; // <-- Set state
+  const top4Ids = getTop4ContenderIds();
   let pot = 0;
-  
-  activeFighters = []; 
-  
-  for (const player of Object.values(players)) {
-    if (top4Ids.has(player.id)) {
+  activeFighterIds.clear();
+  const finalFighters = [];
+
+  for (const id of top4Ids) {
+    const player = players[id];
+    if (player) {
       pot += player.betAmount;
-      activeFighters.push(player);
-    } else if (player.role === 'CONTENDER') {
-      console.log(`Burning ${player.betAmount} from ${player.name}`);
+      activeFighterIds.add(player.id);
+      finalFighters.push(player);
+    }
+  }
+  for (const player of Object.values(players)) {
+    if (!activeFighterIds.has(player.id) && player.role === 'CONTENDER') {
       player.betAmount = 0;
     }
   }
 
-  io.emit('round:start', activeFighters);
+  // Use the new unified event
+  io.emit('game:phaseChange', { phase: 'IN_ROUND', fighters: finalFighters });
   broadcastLobbyState();
   startGameRound(pot);
 };
@@ -73,7 +81,7 @@ const startLobbyCountdown = (duration) => {
 
 const checkAndManageCountdown = (previousTop4Ids = []) => {
   const contenders = getContenders();
-  if (contenders.length < 4) {
+  if (contenders.length < 2) {
     stopLobbyCountdown();
   } else {
     if (!lobbyCountdownIntervalId) {
@@ -89,54 +97,60 @@ const checkAndManageCountdown = (previousTop4Ids = []) => {
 
 // --- GAME ROUND LOGIC ---
 const endRound = (winner, pot) => {
-  // 1. Stop all active timers for the round
   if (gameLoopIntervalId) clearInterval(gameLoopIntervalId);
   if (roundTimerIntervalId) clearInterval(roundTimerIntervalId);
   gameLoopIntervalId = null;
   roundTimerIntervalId = null;
   roundTimer = null;
   
-  // 2. Announce the winner to the server console and all clients
-  console.log(`Round over. Winner: ${winner.name}, Pot: ${pot}`);
-  io.emit('round:end', { winner: winner.name, pot: pot });
+  gamePhase = 'POST_ROUND'; // <-- Set state
+  console.log(`Entering POST_ROUND. Winner: ${winner.name}`);
+  
+  // Use the new unified event
+  io.emit('game:phaseChange', { 
+    phase: 'POST_ROUND',
+    winnerData: { winner: winner.name, pot: pot }
+  });
 
-  // 3. After a 5-second delay for the announcement, reset the lobby
   setTimeout(() => {
-    console.log("Resetting lobby for the next round...");
+    console.log("Resetting to LOBBY phase...");
+    gamePhase = 'LOBBY';
     players = {}; 
-    activeFighters = [];
-    io.emit('lobby:reset'); // Tell all clients to reset their personal state
-    checkAndManageCountdown(); // Check if a new auction should begin
-  }, 5000); 
+    activeFighterIds.clear();
+    
+    // Announce the return to the lobby
+    io.emit('game:phaseChange', { phase: 'LOBBY' });
+    checkAndManageCountdown();
+  }, 10000); 
 };
 
 const startGameRound = (pot) => {
-  if (gameLoopIntervalId) clearInterval(gameLoopIntervalId);
-  if (roundTimerIntervalId) clearInterval(roundTimerIntervalId);
-
   roundTimer = ROUND_DURATION_SECONDS;
-  let tick = 0;
   
-  activeFighters.forEach(fighter => {
+  // Get fresh fighter objects using the IDs
+  const currentFighters = Object.values(players).filter(p => activeFighterIds.has(p.id));
+  currentFighters.forEach(fighter => {
     fighter.position = [Math.random() * 10 - 5, 0, Math.random() * 10 - 5];
     fighter.health = 3;
     fighter.input = { moveForward: false, moveBackward: false, moveLeft: false, moveRight: false };
   });
 
   roundTimerIntervalId = setInterval(() => {
+    const currentFighters = Object.values(players).filter(p => activeFighterIds.has(p.id));
     if (roundTimer > 0) {
       roundTimer--;
       broadcastRoundTimer();
     } else {
       clearInterval(roundTimerIntervalId);
-      const winner = activeFighters[Math.floor(Math.random() * activeFighters.length)];
+      const winner = currentFighters[Math.floor(Math.random() * currentFighters.length)];
       endRound(winner, pot);
     }
   }, 1000);
 
-  // The main game loop for physics and state updates
   gameLoopIntervalId = setInterval(() => {
-    activeFighters.forEach(p => {
+    const currentFighters = Object.values(players).filter(p => activeFighterIds.has(p.id));
+
+    currentFighters.forEach(p => {
       const input = p.input;
       const moveDirection = { x: 0, z: 0 };
       if (input.moveForward) moveDirection.z -= 1;
@@ -148,17 +162,18 @@ const startGameRound = (pot) => {
         p.position[0] += moveDirection.x * 5 * (1 / 20);
         p.position[2] += moveDirection.z * 5 * (1 / 20);
       }
+      updatePlayerHitbox(p);
     });
     
-    io.emit('game:state', activeFighters.reduce((acc, p) => ({...acc, [p.id]: p}), {}));
+    io.emit('game:state', currentFighters.reduce((acc, p) => ({...acc, [p.id]: p}), {}));
   }, 1000 / 20);
 };
-
 
 // --- CONNECTION HANDLER ---
 io.on('connection', (socket) => {
   console.log('✅ A ghost connected:', socket.id);
   
+  socket.emit('game:phaseChange', { phase: gamePhase });
   socket.emit('lobby:state', players);
   socket.emit('lobby:countdown', lobbyCountdown);
 
@@ -211,12 +226,10 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     if (players[socket.id]) {
-      console.log(`❌ ${players[socket.id].name} disconnected.`);
+      removePlayerHitbox(socket.id);
       delete players[socket.id];
       broadcastLobbyState();
       checkAndManageCountdown(getTop4ContenderIds());
-    } else {
-      console.log(`❌ A ghost disconnected: ${socket.id}`);
     }
   });
 
@@ -225,6 +238,51 @@ io.on('connection', (socket) => {
       players[socket.id].input = input;
     }
   });
+
+  socket.on('player:shoot', (shotData) => {
+    const shooter = players[socket.id];
+    if (!shooter || !activeFighterIds.has(shooter.id)) return;
+
+    const hit = performRaycast(shooter, shotData);
+
+    if (hit) {
+      const hitObjectName = hit.object.name;
+      const hitPlayer = players[hitObjectName];
+
+      if (hitPlayer) {
+        // --- NEW: HEALTH & DAMAGE LOGIC ---
+        if (hitPlayer.health > 0) {
+          hitPlayer.health -= 1;
+          console.log(`💥 ${shooter.name} shot ${hitPlayer.name}! (${hitPlayer.health} HP remaining)`);
+          
+          io.emit('player:hit', {
+            shooterId: shooter.id,
+            victimId: hitPlayer.id,
+            victimHealth: hitPlayer.health,
+          });
+
+          if (hitPlayer.health <= 0) {
+            console.log(`💀 ${hitPlayer.name} has been eliminated by ${shooter.name}.`);
+            activeFighterIds.delete(hitPlayer.id);
+            io.emit('player:eliminated', { victimId: hitPlayer.id, eliminatorId: shooter.id });
+
+            // Check for a winner
+            if (activeFighterIds.size === 1) {
+              const winnerId = activeFighterIds.values().next().value;
+              const winner = players[winnerId];
+              const pot = Array.from(activeFighterIds).reduce((acc, id) => acc + (players[id]?.betAmount || 0), 0);
+              endRound(winner, pot);
+            }
+          }
+        }
+      } else {
+        io.emit('environment:hit', { 
+          point: hit.point.toArray(), 
+          normal: hit.face.normal.toArray() 
+        });
+      }
+    }
+  }); 
 });
 
 server.listen(PORT, () => console.log(`🚀 Server is running on http://localhost:${PORT}`));
