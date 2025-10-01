@@ -3,30 +3,95 @@
 import { useGameStore, Player } from "@/store/useGameStore";
 import { useMemo, useState, useEffect } from "react";
 import { NameInput } from "./NameInput";
+import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import {
+  SystemProgram,
+  Transaction,
+  PublicKey,
+} from "@solana/web3.js";
 
-/**
- * The LobbyGate component is the first thing a new user sees.
- * It handles the initial entry fee payment, which is required to become a "Contender".
- */
 const LobbyGate = () => {
+  const { connection } = useConnection();
+  const { connected, publicKey, sendTransaction } = useWallet();
   const socket = useGameStore((state) => state.socket);
-  const [isPaying, setIsPaying] = useState(false); // Local state to manage button disabling during payment.
+
+  const [isPaying, setIsPaying] = useState(false);
   const [amount, setAmount] = useState("1000");
 
-  const handleEnter = (e: React.FormEvent) => {
+  // ** NEW: Listen for server-side verification failure **
+  useEffect(() => {
+    if (!socket) return;
+    
+    const handleEntryFailed = () => {
+        setIsPaying(false); // Reset button on failure
+    };
+
+    socket.on("lobby:entryFailed", handleEntryFailed);
+
+    return () => {
+        socket.off("lobby:entryFailed", handleEntryFailed);
+    };
+  }, [socket]);
+
+
+  const handleEnter = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!publicKey || !socket) return;
+
     const numAmount = parseInt(amount, 10);
     if (numAmount >= 1000) {
       setIsPaying(true);
-      // Emits an event to the server to process the entry fee.
-      socket?.emit("player:enterLobby", numAmount);
+      try {
+        const lamportsToSend = numAmount;
+        const treasuryAddress = new PublicKey(process.env.NEXT_PUBLIC_TREASURY_WALLET_ADDRESS!);
+
+        const transaction = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: publicKey,
+            toPubkey: treasuryAddress,
+            lamports: lamportsToSend,
+          })
+        );
+
+        const signature = await sendTransaction(transaction, connection);
+        console.log("Transaction sent:", signature);
+        await connection.confirmTransaction(signature, "processed");
+        console.log("Transaction confirmed:", signature);
+
+        socket.emit("player:verifyEntry", {
+          signature,
+          walletAddress: publicKey.toBase58(),
+          amount: lamportsToSend,
+        });
+
+      } catch (error) {
+        console.error("Payment failed:", error);
+        // User rejected or transaction failed before sending to server
+        alert("Payment failed. Please try again.");
+        setIsPaying(false); // Reset button
+      }
     }
   };
+
+  if (!connected || !publicKey) {
+    return (
+      <div className="flex flex-col items-center gap-4">
+        <h2 className="text-2xl font-bold">Connect Wallet to Join</h2>
+        <p className="text-gray-400">
+          You need a Solana wallet to enter the Coliseum.
+        </p>
+        <WalletMultiButton />
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={handleEnter} className="flex flex-col items-center gap-4">
       <h2 className="text-2xl font-bold">Join the Auction</h2>
-      <p className="text-gray-400">Place an initial bet to enter (min. 1000)</p>
+      <p className="text-gray-400">
+        Place an initial bet to enter (min. 1000 Lamports)
+      </p>
       <div className="flex gap-2 w-full">
         <input
           type="number"
@@ -39,29 +104,25 @@ const LobbyGate = () => {
         />
         <button
           type="submit"
-          disabled={isPaying || !socket || parseInt(amount) < 1000}
+          disabled={isPaying || parseInt(amount) < 1000}
           className="w-2/3 border border-yellow-700 bg-yellow-900 p-3 font-bold text-white hover:bg-yellow-800 disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
         >
-          {isPaying ? "PROCESSING..." : "PAY & ENTER"}
+          {isPaying ? "VERIFYING ON-CHAIN..." : "PAY & ENTER"}
         </button>
       </div>
+      <p className="text-xs text-gray-500">
+        This will send real SOL on Devnet. Make sure you have Devnet SOL.
+      </p>
     </form>
   );
 };
 
-/**
- * The BettingPanel component allows verified contenders to increase their bet amount
- * to compete for a spot in the top 4.
- * @param {object} props - The component's props.
- * @param {Player | null} props.self - The local player's state object.
- */
+
 const BettingPanel = ({ self }: { self: Player | null }) => {
   const socket = useGameStore((state) => state.socket);
   const [betAmount, setBetAmount] = useState("100");
   const [isBetting, setIsBetting] = useState(false);
 
-  // Reset the "isBetting" state when the player's total bet amount changes,
-  // which indicates the server has successfully processed the last bet.
   useEffect(() => {
     if (isBetting) {
       setIsBetting(false);
@@ -72,39 +133,37 @@ const BettingPanel = ({ self }: { self: Player | null }) => {
     const amount = parseInt(betAmount, 10);
     if (socket && amount > 0 && !isBetting) {
       setIsBetting(true);
-      // Emits an event to the server to place an additional bet.
       socket.emit("player:placeBet", amount);
     }
   };
 
   return (
-    <div className="flex gap-2">
-      <input
-        type="number"
-        step={100}
-        value={betAmount}
-        onChange={(e) => setBetAmount(e.target.value)}
-        className="w-1/3 border border-gray-700 bg-gray-900 p-3 text-center font-mono"
-        disabled={isBetting}
-      />
-      <button
-        onClick={handleIncreaseBet}
-        disabled={isBetting || parseInt(betAmount) <= 0}
-        className="w-2/3 border p-3 font-bold text-white enabled:border-green-700 enabled:bg-green-900 enabled:hover:bg-green-800 disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
-      >
-        {isBetting ? "INCREASING..." : "INCREASE BET"}
-      </button>
+    <div className="flex flex-col items-center gap-4">
+        <div className="flex gap-2 w-full">
+            <input
+                type="number"
+                step={100}
+                value={betAmount}
+                onChange={(e) => setBetAmount(e.target.value)}
+                className="w-1/3 border border-gray-700 bg-gray-900 p-3 text-center font-mono"
+                disabled={isBetting}
+            />
+            <button
+                onClick={handleIncreaseBet}
+                disabled={isBetting || parseInt(betAmount) <= 0}
+                className="w-2/3 border p-3 font-bold text-white enabled:border-green-700 enabled:bg-green-900 enabled:hover:bg-green-800 disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
+            >
+                {isBetting ? "INCREASING..." : "INCREASE BET"}
+            </button>
+        </div>
+        <p className="text-xs text-gray-500">
+            (Note: Increasing bets is not yet on-chain)
+        </p>
     </div>
   );
 };
 
-/**
- * The main Lobby component serves as the central hub for the pre-game experience.
- * It displays the auction countdown, lists of fighters and contenders, and provides
- * action panels for players to join, set their name, and bet.
- */
 export const Lobby = () => {
-  // Subscribing to various state values from the global Zustand store.
   const socket = useGameStore((state) => state.socket);
   const players = useGameStore((state) => state.players);
   const lobbyCountdown = useGameStore((state) => state.lobbyCountdown);
@@ -113,12 +172,14 @@ export const Lobby = () => {
   const isVerified = useGameStore((state) => state.isVerified);
   const isConnected = useGameStore((state) => state.isConnected);
   const reconnectSocket = useGameStore((state) => state.reconnectSocket);
-
-  // Deriving the local player's own data from the `players` map.
   const self = socket && socket.id ? players[socket.id] : null;
 
-  // useMemo is used to efficiently calculate the lists of fighters and contenders.
-  // This memoized value only recalculates when the `players` object changes.
+  // ** NEW: State to prevent hydration mismatch **
+  const [hasMounted, setHasMounted] = useState(false);
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
   const { fighters, contenders } = useMemo(() => {
     const playerArray = Object.values(players);
     const allContenders = playerArray
@@ -128,26 +189,19 @@ export const Lobby = () => {
           b.betAmount - (a.betAmount || 0) ||
           (a.lastBetTimestamp || 0) - (b.lastBetTimestamp || 0),
       );
-
-    // The top 4 bidders are designated as fighters.
     const top4 = allContenders.slice(0, 4);
-    // Everyone else is a contender or spectator.
     const everyoneElse = playerArray
       .filter((p) => !top4.some((top) => top.id === p.id))
       .sort((a, b) => (b.betAmount || 0) - (a.betAmount || 0));
-
-    return {
-      fighters: top4,
-      contenders: everyoneElse,
-    };
+    return { fighters: top4, contenders: everyoneElse };
   }, [players]);
 
-  // This function determines which action panel to show the user based on their current state.
   const renderActionPanel = () => {
-    if (!isVerified) return <LobbyGate />; // If not paid, show entry fee gate.
-    if (lobbyPhase === "NAME_INPUT") return <NameInput />; // If paid but no name, show name input.
-    if (lobbyPhase === "BETTING") return <BettingPanel self={self} />; // If all set, show betting panel.
-    return <LobbyGate />; // Default fallback.
+    if (!hasMounted) return null; // Don't render wallet-dependent UI on the server
+    if (!isVerified) return <LobbyGate />;
+    if (lobbyPhase === "NAME_INPUT") return <NameInput />;
+    if (lobbyPhase === "BETTING") return <BettingPanel self={self} />;
+    return <LobbyGate />;
   };
 
   return (
@@ -163,12 +217,12 @@ export const Lobby = () => {
         )}
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between p-1">
         {isConnected ? (
-          <>
+          <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full bg-green-500"></div>
             <span className="text-xs font-mono text-gray-400">CONNECTED</span>
-          </>
+          </div>
         ) : (
           <button
             onClick={reconnectSocket}
@@ -178,14 +232,16 @@ export const Lobby = () => {
             <span>OFFLINE (Click to reconnect)</span>
           </button>
         )}
+        {/* Only render the wallet button on the client */}
+        {hasMounted && <WalletMultiButton />}
       </div>
 
       {gamePhase === "IN_ROUND" ? (
-        <div className="flex w-full items-center justify-center border-b border-gray-600 bg-black aspect-video text-gray-400">
-          STREAM OF CURRENT MATCH (pump.fun)
+        <div className="flex w-full items-center justify-center border-y border-gray-600 bg-black aspect-video text-gray-400">
+          STREAM OF CURRENT MATCH
         </div>
       ) : (
-        <div className="flex w-full items-center justify-center border-b border-gray-600 bg-gray-900 aspect-video text-gray-600">
+        <div className="flex w-full items-center justify-center border-y border-gray-600 bg-gray-900 aspect-video text-gray-600">
           WAITING FOR NEXT MATCH
         </div>
       )}
@@ -205,7 +261,7 @@ export const Lobby = () => {
                   )}
                 </span>
                 <span className="font-mono text-yellow-400">
-                  {p.betAmount} TOKENS
+                  {p.betAmount} Lamports
                 </span>
               </li>
             ))}
@@ -226,7 +282,7 @@ export const Lobby = () => {
                 </span>
                 {p.betAmount > 0 && (
                   <span className="font-mono text-gray-500">
-                    {p.betAmount} TOKENS
+                    {p.betAmount} Lamports
                   </span>
                 )}
               </li>
