@@ -3,11 +3,11 @@ import { io, Socket } from "socket.io-client";
 
 // Represents a single player in the game
 export interface Player {
-  id: string; // The socket ID of the player.
-  walletAddress: string; // The player's Solana wallet address.
-  name: string; // The display name chosen by the player.
+  id: string;
+  walletAddress: string;
+  name: string;
   role: "SPECTATOR" | "CONTENDER";
-  isVerified: boolean; // True if the player has placed an initial bet.
+  isVerified: boolean;
   betAmount: number;
   lastBetTimestamp: number | null;
   position: [number, number, number];
@@ -17,6 +17,9 @@ export interface Player {
     kills: number;
     deaths: number;
     wins: number;
+    // CHANGED: Add new stats fields
+    totalGamesPlayed: number;
+    netWinnings: number;
   };
 }
 

@@ -1,54 +1,118 @@
 "use client";
 import { GameScene } from "@/components/GameScene";
 import { Lobby } from "@/components/Lobby";
+import { TitleOverlay } from "@/components/TitleOverlay";
 import { useGameStore } from "@/store/useGameStore";
-import { useEffect } from "react";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { useEffect, useState } from "react";
 
-// Define prop types
-interface BannerProps {
-  winner: string;
-  pot: number;
-}
+const ConnectionStatus = () => {
+  const isConnected = useGameStore((state) => state.isConnected);
+  return (
+    <div className="flex items-center gap-2">
+      <div className={`h-2 w-2 ${isConnected ? "animate-pulse bg-green-500" : "bg-red-500"}`} />
+      <span className={`text-xs ${isConnected ? "text-green-500" : "text-red-500"}`}>
+        {isConnected ? "CONNECTED" : "OFFLINE"}
+      </span>
+    </div>
+  );
+};
 
-const WinnerBanner = ({ winner, pot }: BannerProps) => (
-  <div className="absolute top-1/3 left-1/2 -translate-x-1/2 z-10 bg-yellow-400 text-black p-8 border-4 border-black text-center">
-    <h2 className="text-4xl font-bold">WINNER!</h2>
-    <p className="text-2xl mt-2">
-      {winner} takes the pot of {pot} TOKENS!
-    </p>
+const StreamPlaceholder = ({ isBlurred }: { isBlurred: boolean }) => (
+  <div className="absolute inset-0 -z-10 bg-black">
+    <img 
+      src="https://placehold.co/1920x1080/orange/white"
+      alt="Stream Placeholder"
+      className={`h-full w-full object-cover transition-all duration-300 ${isBlurred ? "filter blur-md grayscale" : ""}`}
+    />
   </div>
 );
 
-export default function Home() {
-  const socket = useGameStore((state) => state.socket);
-  const gamePhase = useGameStore((state) => state.gamePhase);
-  const gladiators = useGameStore((state) => state.gladiators);
-  const roundWinner = useGameStore((state) => state.roundWinner);
-  const clearWinner = useGameStore((state) => state.clearWinner);
 
-  // Check if the current client is one of the fighters for this round
-  const isFighter = gladiators.some((g) => g.id === socket?.id);
+export default function Home() {
+  const { socket, gamePhase, gladiators, connectSocket, roundWinner } = useGameStore();
+  const { connected } = useWallet();
+  const [isLobbyVisible, setLobbyVisible] = useState(false);
+  const [isTitleHovered, setTitleHovered] = useState(false);
 
   useEffect(() => {
-    if (roundWinner) {
-      const timer = setTimeout(() => {
-        clearWinner();
-      }, 10000); // Show winner for 5 seconds
-      return () => clearTimeout(timer);
-    }
-  }, [roundWinner, clearWinner]);
+    connectSocket();
+  }, [connectSocket]);
+
+  const isFighter = gladiators.some((g) => g.id === socket?.id);
+  // CORRECTED: Blur is only active when the lobby is open.
+  const isStreamBlurred = isLobbyVisible && !isFighter;
+  
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Tab") {
+        e.preventDefault();
+        if (connected) {
+            setLobbyVisible((prev) => !prev);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [connected]);
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-gray-900 p-4 text-white">
+    <main className="font-body">
+
+      <StreamPlaceholder isBlurred={isStreamBlurred} />
+
+      <div className="fixed top-4 left-4 z-40">
+        <ConnectionStatus />
+      </div>
+
+      <TitleOverlay onHover={setTitleHovered} />
+      
+      {/* CORRECTED: This button now only shows when not connected AND the title is not hovered */}
+      {!connected && !isTitleHovered && (
+        <div className="fixed top-4 right-4 z-40 wallet-button-container">
+          <WalletMultiButton />
+        </div>
+      )}
+
+      {/* Container for bottom buttons with more spacing */}
+      <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-40">
+        {connected ? (
+            <button 
+                onClick={() => setLobbyVisible(prev => !prev)}
+                className="text-sm text-white opacity-50 hover:opacity-100"
+            >
+                {isLobbyVisible ? "[CLOSE LOBBY (TAB)]" : "[OPEN LOBBY (TAB)]"}
+            </button>
+        ) : (
+            <p className="text-sm text-center text-gray-500">
+                [CONNECT YOUR WALLET AND BID TO FIGHT IN THE NEXT ROUND!]
+            </p>
+        )}
+      </div>
+
+      {isFighter && gamePhase === "IN_ROUND" ? (
+        <>
+          <div className="crosshair">+</div>
+          <GameScene />
+        </>
+      ) : (
+        isLobbyVisible && connected && <Lobby />
+      )}
+      
       {roundWinner && (
-        <WinnerBanner winner={roundWinner.name} pot={roundWinner.pot} />
-      )}
+        <div className="absolute top-1/3 left-1/2 z-20 -translate-x-1/2 border-4 border-black bg-yellow-400 p-8 text-center">
+           <h2 className="font-title text-4xl font-bold">WINNER!</h2>
+           <p className="mt-2 text-2xl">
+           {roundWinner.name} takes the pot of {roundWinner.pot} Lamports!
+           </p>
+       </div>
+     )}
 
-      {gamePhase === "IN_ROUND" && isFighter && (
-        <div className="crosshair">+</div>
-      )}
-
-      {gamePhase === "IN_ROUND" && isFighter ? <GameScene /> : <Lobby />}
+      <footer className="fixed bottom-0 left-0 right-0 border-t border-gray-700 bg-black/80 p-1 text-center text-xs text-gray-400">
+        Top 4 bidders fight to the last. All bids go to the winner, minus a 10% burn.
+      </footer>
     </main>
   );
 }
+

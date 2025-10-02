@@ -2,7 +2,7 @@ import express from "express";
 import http from "http";
 import { Server } from "socket.io";
 import "dotenv/config";
-import { Connection, clusterApiUrl, PublicKey, SystemProgram, Keypair, Transaction } from "@solana/web3.js";
+import { Connection, clusterApiUrl, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import {
   updatePlayerHitbox,
@@ -31,15 +31,10 @@ const io = new Server(server, {
 const PORT = 3001;
 let players = {};
 
-// Solana connection
 const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
 const TREASURY_WALLET_ADDRESS = new PublicKey(process.env.TREASURY_WALLET_ADDRESS);
-const treasuryKeypair = Keypair.fromSecretKey(bs58.decode(process.env.TREASURY_PRIVATE_KEY));
-const BURN_ADDRESS = new PublicKey("11111111111111111111111111111111");
 
-
-// --- Game State Variables ---
-let gamePhase = "LOBBY"; // 'LOBBY', 'IN_ROUND', 'POST_ROUND'
+let gamePhase = "LOBBY";
 let lobbyCountdown = null;
 let lobbyCountdownIntervalId = null;
 let roundTimer = null;
@@ -48,20 +43,17 @@ let roundTimerIntervalId = null;
 let activeFighterIds = new Set();
 let roundPot = 0;
 
-// --- Game Constants ---
 const MAIN_COUNTDOWN_SECONDS = 30;
 const OVERTIME_SECONDS = 10;
 const ROUND_DURATION_SECONDS = 60;
-const MIN_PLAYERS_TO_START = 2; // Set to 4 for production
+const MIN_PLAYERS_TO_START = 4; // Set to 4 for production
 
-// --- UTILITY & BROADCAST FUNCTIONS ---
 const getContendersWithBets = () => Object.values(players).filter((p) => p.betAmount > 0);
 const getTopFighterIds = () => getContendersWithBets().sort((a, b) => b.betAmount - a.betAmount || (a.lastBetTimestamp || 0) - (b.lastBetTimestamp || 0)).slice(0, MIN_PLAYERS_TO_START).map((p) => p.id);
 const broadcastLobbyState = () => io.emit("lobby:state", players);
 const broadcastLobbyCountdown = () => io.emit("lobby:countdown", lobbyCountdown);
 const broadcastRoundTimer = () => io.emit("round:timer", roundTimer);
 
-// --- LOBBY LOGIC ---
 const stopLobbyCountdown = () => {
   if (lobbyCountdownIntervalId) {
     clearInterval(lobbyCountdownIntervalId);
@@ -75,31 +67,29 @@ const finalizeAuction = () => {
   stopLobbyCountdown();
   gamePhase = "IN_ROUND";
   const fighterIds = getTopFighterIds();
-  
-  // ** NEW: Pot is the sum of ALL bets placed in the lobby **
-  roundPot = Object.values(players).reduce((acc, player) => acc + player.betAmount, 0);
-  console.log(`Round starting. Total pot is ${roundPot} lamports.`);
-
   activeFighterIds.clear();
   const finalFighters = [];
+
+  // RULE CHANGE: The pot now includes ALL bets from everyone who participated.
+  roundPot = Object.values(players).reduce((sum, player) => sum + player.betAmount, 0);
 
   for (const id of fighterIds) {
     const player = players[id];
     if (player) {
       activeFighterIds.add(player.id);
       finalFighters.push(player);
-      incrementPlayerStat(player.walletAddress, "total_games_played", 1);
     }
   }
 
-  // Update stats for outbid players
-  for (const player of Object.values(players)) {
-    if (player.betAmount > 0 && !activeFighterIds.has(player.id)) {
-      console.log(`Outbid player ${player.name}'s bet of ${player.betAmount} is now part of the pot.`);
-      // Their bet is now part of the pot, so it's a loss for them
-      incrementPlayerStat(player.walletAddress, "net_winnings", -player.betAmount);
+  // All bettors are considered to have played the round
+  getContendersWithBets().forEach(p => {
+    incrementPlayerStat(p.walletAddress, "total_games_played", 1);
+    // Only non-fighters' bets are settled now as a loss. Fighters' bets are settled after the match.
+    if (!activeFighterIds.has(p.id)) {
+        incrementPlayerStat(p.walletAddress, "net_winnings", -p.betAmount);
     }
-  }
+  });
+
 
   io.emit("game:phaseChange", { phase: "IN_ROUND", fighters: finalFighters });
   broadcastLobbyState();
@@ -135,88 +125,71 @@ const checkAndManageCountdown = (previousTopFighterIds = []) => {
   }
 };
 
-// --- GAME ROUND LOGIC ---
-const endRound = async (winner) => {
+const endRound = (winner) => {
     if (gameLoopIntervalId) clearInterval(gameLoopIntervalId);
     if (roundTimerIntervalId) clearInterval(roundTimerIntervalId);
     gameLoopIntervalId = null;
     roundTimerIntervalId = null;
     roundTimer = null;
-  
+
     gamePhase = "POST_ROUND";
-    console.log(`Entering POST_ROUND. Winner: ${winner ? winner.name : 'None'}. Pot: ${roundPot}`);
-  
-    let payoutSignature = null;
-    if (winner && roundPot > 0) {
-      try {
-        const burnAmount = Math.floor(roundPot * 0.10);
-        const winnerPayout = roundPot - burnAmount;
+    console.log(`Entering POST_ROUND. Winner: ${winner ? winner.name : 'None'}`);
 
-        const winnerAddress = new PublicKey(winner.walletAddress);
+    // RULE CHANGE: Calculate winner's earnings with 10% burn.
+    const winnings = roundPot * 0.9;
 
-        const transaction = new Transaction()
-          .add(
-            SystemProgram.transfer({
-              fromPubkey: treasuryKeypair.publicKey,
-              toPubkey: BURN_ADDRESS,
-              lamports: burnAmount,
-            })
-          )
-          .add(
-            SystemProgram.transfer({
-              fromPubkey: treasuryKeypair.publicKey,
-              toPubkey: winnerAddress,
-              lamports: winnerPayout,
-            })
-          );
-        
-        payoutSignature = await connection.sendTransaction(transaction, [treasuryKeypair]);
-        await connection.confirmTransaction(payoutSignature, 'confirmed');
-
-        console.log(`✅ Payout successful! Winner: ${winner.name}, Amount: ${winnerPayout}, Burn: ${burnAmount}. Tx: ${payoutSignature}`);
-        
-        incrementPlayerStat(winner.walletAddress, "wins", 1);
-        incrementPlayerStat(winner.walletAddress, "net_winnings", winnerPayout); // Winner's net is the payout
-      
-      } catch (error) {
-        console.error("!!! ON-CHAIN PAYOUT FAILED !!!", error);
-      }
+    if (winner) {
+      incrementPlayerStat(winner.walletAddress, "wins", 1);
+      // Winner's net gain is the total pot (after burn) minus their own bet.
+      const netGain = winnings - winner.betAmount;
+      incrementPlayerStat(winner.walletAddress, "net_winnings", netGain);
     }
-    
-    // Update deaths for all non-winners who were in the fight
-    activeFighterIds.forEach((fighterId) => {
+
+    const fighterIdsAtStart = new Set(activeFighterIds);
+    fighterIdsAtStart.forEach((fighterId) => {
       const fighter = Object.values(players).find(p => p.id === fighterId);
       if (fighter && (!winner || fighter.id !== winner.id)) {
         incrementPlayerStat(fighter.walletAddress, "deaths", 1);
+        // Losing fighters lose their bet amount from net_winnings
+        incrementPlayerStat(fighter.walletAddress, "net_winnings", -fighter.betAmount);
       }
     });
-  
+
     io.emit("game:phaseChange", {
       phase: "POST_ROUND",
-      winnerData: { 
-        name: winner ? winner.name : "DRAW", 
-        pot: roundPot,
-        payoutTx: payoutSignature // Provide proof of payment to the client
-      },
+      winnerData: { name: winner ? winner.name : "DRAW", pot: winnings }, // Send the final pot after burn.
     });
-  
-    setTimeout(() => {
+
+    setTimeout(async () => {
       console.log("Resetting to LOBBY phase...");
       gamePhase = "LOBBY";
-      Object.values(players).forEach(p => {
-          p.betAmount = 0;
-          p.isVerified = false;
-          p.lastBetTimestamp = null;
-      });
+
+      // On reset, re-fetch player stats to ensure they are up-to-date for the new lobby.
+      for (const p of Object.values(players)) {
+          const latestStats = await getPlayerStats(p.walletAddress);
+          if (latestStats && players[p.id]) { // Check if player still exists
+            players[p.id].betAmount = 0;
+            players[p.id].isVerified = false;
+            players[p.id].lastBetTimestamp = null;
+            // Update stats after the round ends.
+            players[p.id].stats = {
+                kills: latestStats.kills,
+                deaths: latestStats.deaths,
+                wins: latestStats.wins,
+                totalGamesPlayed: latestStats.total_games_played,
+                netWinnings: latestStats.net_winnings
+            };
+          }
+      }
+
       activeFighterIds.clear();
-      roundPot = 0;
-  
+
       io.emit("game:phaseChange", { phase: "LOBBY" });
       broadcastLobbyState();
       checkAndManageCountdown();
     }, 10000);
-};
-  
+  };
+
   const startGameRound = () => {
     roundTimer = ROUND_DURATION_SECONDS;
     const currentFighters = Object.values(players).filter((p) => activeFighterIds.has(p.id));
@@ -287,9 +260,16 @@ io.on("connection", (socket) => {
       betAmount: 0,
       lastBetTimestamp: null,
       position: [0, 0, 0], rotation: [0, 0, 0, 1],
-      stats: { kills: playerData.kills, deaths: playerData.deaths, wins: playerData.wins }
+      // NEW: Pass all relevant stats to the client for the leaderboard
+      stats: {
+        kills: playerData.kills,
+        deaths: playerData.deaths,
+        wins: playerData.wins,
+        totalGamesPlayed: playerData.total_games_played,
+        netWinnings: playerData.net_winnings
+      }
     };
-    
+
     socket.emit("lobby:joined", { name: players[socket.id].name, isVerified: players[socket.id].isVerified });
     broadcastLobbyState();
   });
@@ -303,57 +283,63 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("player:verifyBet", async ({ signature, walletAddress, amount }) => {
-      const player = players[socket.id];
-      if (!player || player.walletAddress !== walletAddress) {
-          return socket.emit("lobby:betFailed", "Player not found or wallet mismatch.");
-      }
-      
-      const previousTopFighterIds = getTopFighterIds();
-      
-      try {
-          console.log(`Verifying bet for ${walletAddress} with signature ${signature}`);
-          const tx = await connection.getTransaction(signature, { maxSupportedTransactionVersion: 0 });
+socket.on("player:verifyBet", async ({ serializedTx, amount }) => {
+    const player = players[socket.id];
+    if (!player) {
+        return socket.emit("lobby:betFailed", "Player not found.");
+    }
 
-          if (!tx) throw new Error("Transaction not found.");
-          if (tx.meta?.err) throw new Error(`Transaction failed on-chain: ${JSON.stringify(tx.meta.err)}`);
+    const previousTopFighterIds = getTopFighterIds();
 
-          const accountKeys = tx.transaction.message.staticAccountKeys.map(key => key.toBase58());
-          const transferInstruction = tx.transaction.message.instructions.find(ix => {
-              const programId = accountKeys[ix.programIdIndex];
-              return programId === SystemProgram.programId.toBase58();
-          });
+    try {
+        console.log(`Verifying bet for ${player.walletAddress}`);
+        const tx = Transaction.from(Buffer.from(serializedTx, 'base64'));
 
-          if (!transferInstruction) throw new Error("SystemProgram.transfer instruction not found.");
-         
-          const decodedData = Buffer.from(bs58.decode(transferInstruction.data));
-          const instructionType = decodedData.readUInt32LE(0);
-          if (instructionType !== 2) throw new Error("Instruction is not a transfer.");
+        // Verify the transaction is signed by the correct player
+        if (!tx.verifySignatures()) {
+            throw new Error("Transaction signature verification failed.");
+        }
 
-          const sentAmount = decodedData.readBigUInt64LE(4);
-          if (BigInt(amount) !== sentAmount) throw new Error(`Amount mismatch. Expected ${amount}, got ${sentAmount.toString()}`);
-          
-          const fromAddress = accountKeys[transferInstruction.accounts[0]];
-          const toAddress = accountKeys[transferInstruction.accounts[1]];
+        const instruction = tx.instructions[0];
+        if (!instruction || !SystemProgram.programId.equals(instruction.programId)) {
+            throw new Error("Invalid instruction program ID.");
+        }
 
-          if (fromAddress !== walletAddress || toAddress !== TREASURY_WALLET_ADDRESS.toBase58()) {
-              throw new Error("Transaction sender or receiver is incorrect.");
-          }
+        // A simple way to decode transfer instruction data
+        const decodedData = Buffer.from(instruction.data);
+        const instructionType = decodedData.readUInt32LE(0);
+        if (instructionType !== 2) throw new Error("Instruction is not a transfer.");
 
-          console.log(`✅ Bet verification successful for ${walletAddress}`);
+        const sentAmount = decodedData.readBigUInt64LE(4);
+        if (BigInt(amount) !== sentAmount) {
+            throw new Error(`Amount mismatch. Expected ${amount}, got ${sentAmount.toString()}`);
+        }
 
-          player.betAmount += amount;
-          player.lastBetTimestamp = Date.now();
-          player.isVerified = true;
-          
-          socket.emit("lobby:betVerified");
-          broadcastLobbyState();
-          checkAndManageCountdown(previousTopFighterIds);
+        const fromKey = instruction.keys[0].pubkey;
+        const toKey = instruction.keys[1].pubkey;
 
-      } catch (error) {
-          console.error("Bet verification failed:", error);
-          socket.emit("lobby:betFailed", `On-chain verification failed: ${error.message}`);
-      }
+        if (fromKey.toBase58() !== player.walletAddress || !toKey.equals(TREASURY_WALLET_ADDRESS)) {
+            throw new Error("Transaction sender or receiver is incorrect.");
+        }
+
+        // If all checks pass, send the transaction
+        const signature = await connection.sendRawTransaction(tx.serialize());
+        await connection.confirmTransaction(signature, 'processed');
+        console.log(`✅ Bet verification successful for ${player.walletAddress}. Signature: ${signature}`);
+        
+        // --- OUR LOGIC STARTS HERE ---
+        player.betAmount += amount;
+        player.lastBetTimestamp = Date.now();
+        player.isVerified = true;
+        
+        socket.emit("lobby:betVerified");
+        broadcastLobbyState();
+        checkAndManageCountdown(previousTopFighterIds);
+
+    } catch (error) {
+        console.error("Bet verification failed:", error);
+        socket.emit("lobby:betFailed", `On-chain verification failed: ${error.message}`);
+    }
   });
 
   socket.on("disconnect", () => {
