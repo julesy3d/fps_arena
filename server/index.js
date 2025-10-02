@@ -2,7 +2,7 @@ import express from "express";
 import http from "http";
 import { Server } from "socket.io";
 import "dotenv/config";
-import { Connection, clusterApiUrl, PublicKey, SystemProgram } from "@solana/web3.js";
+import { Connection, clusterApiUrl, PublicKey, SystemProgram, Keypair, Transaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import {
   updatePlayerHitbox,
@@ -34,6 +34,9 @@ let players = {};
 // Solana connection
 const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
 const TREASURY_WALLET_ADDRESS = new PublicKey(process.env.TREASURY_WALLET_ADDRESS);
+const treasuryKeypair = Keypair.fromSecretKey(bs58.decode(process.env.TREASURY_PRIVATE_KEY));
+const BURN_ADDRESS = new PublicKey("11111111111111111111111111111111");
+
 
 // --- Game State Variables ---
 let gamePhase = "LOBBY"; // 'LOBBY', 'IN_ROUND', 'POST_ROUND'
@@ -49,7 +52,7 @@ let roundPot = 0;
 const MAIN_COUNTDOWN_SECONDS = 30;
 const OVERTIME_SECONDS = 10;
 const ROUND_DURATION_SECONDS = 60;
-const MIN_PLAYERS_TO_START = 4; // Set to 4 for production
+const MIN_PLAYERS_TO_START = 2; // Set to 4 for production
 
 // --- UTILITY & BROADCAST FUNCTIONS ---
 const getContendersWithBets = () => Object.values(players).filter((p) => p.betAmount > 0);
@@ -72,23 +75,28 @@ const finalizeAuction = () => {
   stopLobbyCountdown();
   gamePhase = "IN_ROUND";
   const fighterIds = getTopFighterIds();
-  roundPot = 0;
+  
+  // ** NEW: Pot is the sum of ALL bets placed in the lobby **
+  roundPot = Object.values(players).reduce((acc, player) => acc + player.betAmount, 0);
+  console.log(`Round starting. Total pot is ${roundPot} lamports.`);
+
   activeFighterIds.clear();
   const finalFighters = [];
 
   for (const id of fighterIds) {
     const player = players[id];
     if (player) {
-      roundPot += player.betAmount;
       activeFighterIds.add(player.id);
       finalFighters.push(player);
       incrementPlayerStat(player.walletAddress, "total_games_played", 1);
     }
   }
 
+  // Update stats for outbid players
   for (const player of Object.values(players)) {
     if (player.betAmount > 0 && !activeFighterIds.has(player.id)) {
-      console.log(`Outbid player ${player.name}'s bet of ${player.betAmount} is burned.`);
+      console.log(`Outbid player ${player.name}'s bet of ${player.betAmount} is now part of the pot.`);
+      // Their bet is now part of the pot, so it's a loss for them
       incrementPlayerStat(player.walletAddress, "net_winnings", -player.betAmount);
     }
   }
@@ -128,7 +136,7 @@ const checkAndManageCountdown = (previousTopFighterIds = []) => {
 };
 
 // --- GAME ROUND LOGIC ---
-const endRound = (winner) => {
+const endRound = async (winner) => {
     if (gameLoopIntervalId) clearInterval(gameLoopIntervalId);
     if (roundTimerIntervalId) clearInterval(roundTimerIntervalId);
     gameLoopIntervalId = null;
@@ -136,15 +144,47 @@ const endRound = (winner) => {
     roundTimer = null;
   
     gamePhase = "POST_ROUND";
-    console.log(`Entering POST_ROUND. Winner: ${winner ? winner.name : 'None'}`);
+    console.log(`Entering POST_ROUND. Winner: ${winner ? winner.name : 'None'}. Pot: ${roundPot}`);
   
-    if (winner) {
-      incrementPlayerStat(winner.walletAddress, "wins", 1);
-      incrementPlayerStat(winner.walletAddress, "net_winnings", roundPot);
+    let payoutSignature = null;
+    if (winner && roundPot > 0) {
+      try {
+        const burnAmount = Math.floor(roundPot * 0.10);
+        const winnerPayout = roundPot - burnAmount;
+
+        const winnerAddress = new PublicKey(winner.walletAddress);
+
+        const transaction = new Transaction()
+          .add(
+            SystemProgram.transfer({
+              fromPubkey: treasuryKeypair.publicKey,
+              toPubkey: BURN_ADDRESS,
+              lamports: burnAmount,
+            })
+          )
+          .add(
+            SystemProgram.transfer({
+              fromPubkey: treasuryKeypair.publicKey,
+              toPubkey: winnerAddress,
+              lamports: winnerPayout,
+            })
+          );
+        
+        payoutSignature = await connection.sendTransaction(transaction, [treasuryKeypair]);
+        await connection.confirmTransaction(payoutSignature, 'confirmed');
+
+        console.log(`✅ Payout successful! Winner: ${winner.name}, Amount: ${winnerPayout}, Burn: ${burnAmount}. Tx: ${payoutSignature}`);
+        
+        incrementPlayerStat(winner.walletAddress, "wins", 1);
+        incrementPlayerStat(winner.walletAddress, "net_winnings", winnerPayout); // Winner's net is the payout
+      
+      } catch (error) {
+        console.error("!!! ON-CHAIN PAYOUT FAILED !!!", error);
+      }
     }
     
-    const fighterIdsAtStart = new Set(activeFighterIds);
-    fighterIdsAtStart.forEach((fighterId) => {
+    // Update deaths for all non-winners who were in the fight
+    activeFighterIds.forEach((fighterId) => {
       const fighter = Object.values(players).find(p => p.id === fighterId);
       if (fighter && (!winner || fighter.id !== winner.id)) {
         incrementPlayerStat(fighter.walletAddress, "deaths", 1);
@@ -153,25 +193,29 @@ const endRound = (winner) => {
   
     io.emit("game:phaseChange", {
       phase: "POST_ROUND",
-      winnerData: { name: winner ? winner.name : "DRAW", pot: roundPot },
+      winnerData: { 
+        name: winner ? winner.name : "DRAW", 
+        pot: roundPot,
+        payoutTx: payoutSignature // Provide proof of payment to the client
+      },
     });
   
     setTimeout(() => {
       console.log("Resetting to LOBBY phase...");
       gamePhase = "LOBBY";
-      // On reset, keep players but clear their bets for the new round
       Object.values(players).forEach(p => {
           p.betAmount = 0;
-          p.isVerified = false; // Player must bet again to be "verified" for the next round's countdown
+          p.isVerified = false;
           p.lastBetTimestamp = null;
       });
       activeFighterIds.clear();
+      roundPot = 0;
   
       io.emit("game:phaseChange", { phase: "LOBBY" });
       broadcastLobbyState();
       checkAndManageCountdown();
     }, 10000);
-  };
+};
   
   const startGameRound = () => {
     roundTimer = ROUND_DURATION_SECONDS;
