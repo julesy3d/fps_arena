@@ -31,17 +31,18 @@ const StreamPlaceholder = ({ isBlurred }: { isBlurred: boolean }) => (
 
 
 export default function Home() {
-  const { socket, gamePhase, gladiators, connectSocket, roundWinner } = useGameStore();
+  const { socket, gamePhase, fighters, connectSocket, roundWinner } = useGameStore();
   const { connected } = useWallet();
   const [isLobbyVisible, setLobbyVisible] = useState(false);
   const [isTitleHovered, setTitleHovered] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     connectSocket();
   }, [connectSocket]);
 
-  const isFighter = gladiators.some((g) => g.id === socket?.id);
-  // CORRECTED: Blur is only active when the lobby is open.
+  const isFighter = fighters?.some((g) => g.id === socket?.id) ?? false;
   const isStreamBlurred = isLobbyVisible && !isFighter;
   
   useEffect(() => {
@@ -68,14 +69,12 @@ export default function Home() {
 
       <TitleOverlay onHover={setTitleHovered} />
       
-      {/* CORRECTED: This button now only shows when not connected AND the title is not hovered */}
-      {!connected && !isTitleHovered && (
+      {mounted && !connected && !isTitleHovered && (
         <div className="fixed top-4 right-4 z-40 wallet-button-container">
           <WalletMultiButton />
         </div>
       )}
 
-      {/* Container for bottom buttons with more spacing */}
       <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-40">
         {connected ? (
             <button 
@@ -115,4 +114,3 @@ export default function Home() {
     </main>
   );
 }
-

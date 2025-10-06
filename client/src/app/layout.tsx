@@ -15,9 +15,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
-        {/* CORRECTED: This script now uses the proper Next.js strategy to prevent hydration errors. */}
         <Script id="adobe-fonts" strategy="beforeInteractive">
           {`
             (function(d) {
@@ -31,7 +30,7 @@ export default function RootLayout({
           `}
         </Script>
       </head>
-      <body>
+      <body suppressHydrationWarning>
         <WalletContextProvider>
           <SocketInitializer />
           {children}

@@ -1,34 +1,50 @@
+// PlayerController.tsx
 "use client";
 
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { PointerLockControls } from "@react-three/drei";
 import { useKeyboardControls } from "@/hooks/useKeyboardControls";
-import { useRef } from "react";
+import { useRef, useEffect } from "react";
 import { useGameStore } from "@/store/useGameStore";
+import * as THREE from "three";
 
 export const PlayerController = ({ isDead }: { isDead: boolean }) => {
   const controlsRef = useRef<any>(null);
   const movement = useKeyboardControls();
-  const speed = 5;
   const socket = useGameStore((state) => state.socket);
+  const players = useGameStore((state) => state.players);
+  const selfId = socket?.id;
+  const { camera } = useThree();
 
-  useFrame((_, delta) => {
-    if (isDead || !controlsRef.current) {
-      // <-- NEW: Freeze if dead
-      // Optional: you can unlock the pointer when the player dies
+  useFrame(() => {
+    if (isDead || !controlsRef.current || !selfId) {
       if (controlsRef.current?.isLocked) {
         controlsRef.current.unlock();
       }
       return;
     }
-    const moveDistance = speed * delta;
 
-    if (movement.moveForward) controlsRef.current.moveForward(moveDistance);
-    if (movement.moveBackward) controlsRef.current.moveForward(-moveDistance); // Corrected typo here
-    if (movement.moveLeft) controlsRef.current.moveRight(-moveDistance);
-    if (movement.moveRight) controlsRef.current.moveRight(moveDistance);
+    // Get player's server-authoritative position
+    const serverPlayer = players[selfId];
+    if (serverPlayer) {
+      // Camera follows server position with eye-height offset
+      camera.position.set(
+        serverPlayer.position[0],
+        serverPlayer.position[1] + 1.6, // Eye height
+        serverPlayer.position[2]
+      );
+    }
 
-    socket?.emit("player:input", movement);
+    // Get camera rotation (where player is looking)
+    const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+    euler.setFromQuaternion(camera.quaternion);
+    const cameraYaw = euler.y;
+
+    // Send input to server
+    socket?.emit("player:input", {
+      ...movement,
+      cameraYaw
+    });
   });
 
   return <PointerLockControls ref={controlsRef} />;

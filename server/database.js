@@ -81,3 +81,29 @@ export const incrementPlayerStat = async (walletAddress, field, value) => {
     );
   }
 };
+
+export async function logTransaction(transactionData) {
+  const { data, error } = await supabase
+    .from('payout_transactions')
+    .insert([transactionData])
+    .select()
+    .single();
+  
+  if (error) {
+    console.error('Failed to log transaction:', error);
+    return null;
+  }
+  
+  return data.id;
+}
+
+export async function updateTransaction(txId, updates) {
+  const { error } = await supabase
+    .from('payout_transactions')
+    .update(updates)
+    .eq('id', txId);
+  
+  if (error) {
+    console.error('Failed to update transaction:', error);
+  }
+}
