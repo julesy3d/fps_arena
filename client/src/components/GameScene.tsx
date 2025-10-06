@@ -35,7 +35,7 @@ interface VictoryScreenProps {
 const SceneContent = ({ isDead }: { isDead: boolean }) => {
   const socket = useGameStore((state) => state.socket);
   const players = useGameStore((state) => state.players);
-  const fighters = useGameStore((state) => state.gladiators);
+  const fighters = useGameStore((state) => state.fighters);
   const [impacts, setImpacts] = useState<ImpactData[]>([]);
   const selfId = socket?.id;
 
@@ -118,7 +118,11 @@ const SceneContent = ({ isDead }: { isDead: boolean }) => {
           )
             return null;
           return (
-            <Opponent key={latestState.id} position={latestState.position} />
+            <Opponent 
+              key={latestState.id} 
+              position={latestState.position}
+              rotation={latestState.rotation}
+            />
           );
         })}
 

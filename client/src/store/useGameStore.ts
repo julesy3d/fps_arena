@@ -7,17 +7,15 @@ export interface Player {
   walletAddress: string;
   name: string;
   role: "SPECTATOR" | "CONTENDER";
-  isVerified: boolean;
   betAmount: number;
   lastBetTimestamp: number | null;
   position: [number, number, number];
-  rotation: [number, number, number, number];
+  rotation: number;
   health?: number;
   stats?: {
     kills: number;
     deaths: number;
     wins: number;
-    // CHANGED: Add new stats fields
     totalGamesPlayed: number;
     netWinnings: number;
   };
@@ -34,7 +32,7 @@ interface StoreState {
   lobbyCountdown: number | null;
   roundTimer: number | null;
   roundWinner: { name: string; pot: number } | null;
-  gladiators: Player[];
+  fighters: Player[]; // Renamed from gladiators
 }
 
 interface StoreActions {
@@ -58,7 +56,7 @@ const initialState: StoreState = {
   lobbyCountdown: null,
   roundTimer: null,
   roundWinner: null,
-  gladiators: [],
+  fighters: [], // Renamed from gladiators
 };
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -107,11 +105,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       set({ gamePhase: phase });
 
       if (phase === "IN_ROUND") {
-        set({ gladiators: data.fighters, roundWinner: null });
+        set({ fighters: data.fighters, roundWinner: null }); // Renamed
       } else if (phase === "POST_ROUND") {
         set({ roundWinner: data.winnerData });
       } else if (phase === "LOBBY") {
-        // Reset but keep connection details
         const { socket, isConnected } = get();
         set({ ...initialState, socket, isConnected, lobbyPhase: 'BETTING' });
       }
