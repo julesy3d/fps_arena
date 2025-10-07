@@ -30,9 +30,8 @@ interface StoreState {
   isVerified: boolean;
   players: Record<string, Player>;
   lobbyCountdown: number | null;
-  roundTimer: number | null;
   roundWinner: { name: string; pot: number } | null;
-  fighters: Player[]; // Renamed from gladiators
+  fighters: Player[]; // The 2 fighters in current duel
 }
 
 interface StoreActions {
@@ -54,9 +53,8 @@ const initialState: StoreState = {
   isVerified: false,
   players: {},
   lobbyCountdown: null,
-  roundTimer: null,
   roundWinner: null,
-  fighters: [], // Renamed from gladiators
+  fighters: [],
 };
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -73,12 +71,11 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     newSocket.on("lobby:state", (players) => set({ players }));
     
-    // Server confirms the player has joined and provides their name
     newSocket.on("lobby:joined", ({ name, isVerified }) =>
       set({
         playerName: name,
-        isVerified: isVerified, // isVerified will be true if betAmount > 0
-        lobbyPhase: "BETTING", // Go straight to betting
+        isVerified: isVerified,
+        lobbyPhase: "BETTING",
       }),
     );
     
@@ -94,7 +91,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       set({ lobbyCountdown: countdown }),
     );
 
-    newSocket.on("round:timer", (timer) => set({ roundTimer: timer }));
+    // REMOVED: round:timer (no longer used in duel)
+    
     newSocket.on("game:state", (gamePlayers) =>
       set((state) => ({ players: { ...state.players, ...gamePlayers } })),
     );
@@ -105,7 +103,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       set({ gamePhase: phase });
 
       if (phase === "IN_ROUND") {
-        set({ fighters: data.fighters, roundWinner: null }); // Renamed
+        set({ fighters: data.fighters, roundWinner: null });
       } else if (phase === "POST_ROUND") {
         set({ roundWinner: data.winnerData });
       } else if (phase === "LOBBY") {

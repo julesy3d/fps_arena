@@ -1,5 +1,5 @@
 "use client";
-import { GameScene } from "@/components/GameScene";
+import { DuelScene } from "@/components/DuelScene"; // NEW: Duel component
 import { Lobby } from "@/components/Lobby";
 import { TitleOverlay } from "@/components/TitleOverlay";
 import { useGameStore } from "@/store/useGameStore";
@@ -90,11 +90,9 @@ export default function Home() {
         )}
       </div>
 
+      {/* NEW: Render DuelScene if you're a fighter in the round */}
       {isFighter && gamePhase === "IN_ROUND" ? (
-        <>
-          <div className="crosshair">+</div>
-          <GameScene />
-        </>
+        <DuelScene />
       ) : (
         isLobbyVisible && connected && <Lobby />
       )}
@@ -109,7 +107,7 @@ export default function Home() {
      )}
 
       <footer className="fixed bottom-0 left-0 right-0 border-t border-gray-700 bg-black/80 p-1 text-center text-xs text-gray-400">
-        Top 4 bidders fight to the last. All bids go to the winner, minus a 10% burn.
+        Top 2 bidders fight at high noon. Winner takes 90% of the pot, 10% burns.
       </footer>
     </main>
   );
