@@ -13,7 +13,6 @@ import { DuelUI, DuelStage3D } from "@/components/DuelScene";
 const Loader = () => ( <div className="absolute inset-0 z-50 bg-black flex items-center justify-center text-white text-2xl font-bold">LOADING...</div> );
 const DefaultStage3D = () => ( <><ambientLight intensity={0.5} /><directionalLight position={[10, 10, 5]} /></> );
 
-// FIXED: Restored the full component code.
 const ConnectionStatus = () => {
   const isConnected = useGameStore((state) => state.isConnected);
   return (
@@ -24,21 +23,29 @@ const ConnectionStatus = () => {
   );
 };
 
-// FIXED: Restored the full component code.
 const StreamPlaceholder = ({ isBlurred }: { isBlurred: boolean }) => (
   <div className="absolute inset-0 -z-20 bg-black">
     <img src="https://placehold.co/1920x1080/orange/white" alt="Stream Placeholder" className={`h-full w-full object-cover transition-all duration-300 ${isBlurred ? "filter blur-md grayscale" : ""}`} />
   </div>
 );
 
-
 export default function Home() {
   const { isHydrated, socket, gamePhase, fighters, connectSocket, roundWinner } = useGameStore();
   const { connected } = useWallet();
   const [isLobbyVisible, setLobbyVisible] = useState(false);
   const [isTitleHovered, setTitleHovered] = useState(false);
-  const [mounted, setMounted] = useState(false);
+
+  console.log('🎮 PAGE RENDER:', {
+    isHydrated,
+    gamePhase,
+    fightersCount: fighters?.length,
+    isDueling: fighters?.some((g) => g.id === socket?.id) && gamePhase === "IN_ROUND"
+  });
   
+  // SOLVES HYDRATION ERROR: This standard hook ensures client-side-only components
+  // are not rendered during the server-side pass, preventing mismatches.
+  const [mounted, setMounted] = useState(false);
+
   useEffect(() => {
     setMounted(true);
     connectSocket();
@@ -60,15 +67,30 @@ export default function Home() {
   }, [connected]);
 
   return (
+    // This <main> tag is the PERSISTENT SHELL. It and its direct children are never unmounted.
     <main className="font-body">
       <StreamPlaceholder isBlurred={isStreamBlurred} />
-      
+
+      {/* The Canvas is PERSISTENT. It is created once and never destroyed. */}
+      <div className="fixed inset-0 z-[-1]">
+        <Suspense fallback={<Loader />}>
+          <Canvas camera={{ fov: 75, position: [2, 2, 7] }}>
+            {/* The CONTENT inside the Canvas is swapped, but the Canvas itself remains stable.
+                This prevents the WebGL context from being destroyed, fixing the camera bug.
+            */}
+            {isHydrated && isDueling ? <DuelStage3D /> : <DefaultStage3D />}
+          </Canvas>
+        </Suspense>
+      </div>
+
+      {/* All other persistent UI elements live here */}
       <div className="fixed top-4 left-4 z-40">
         <ConnectionStatus />
       </div>
 
       <TitleOverlay onHover={setTitleHovered} />
       
+      {/* SOLVES HYDRATION ERROR: This check ensures the wallet button only renders on the client. */}
       {mounted && !connected && !isTitleHovered && (
         <div className="fixed top-4 right-4 z-40 wallet-button-container">
           <WalletMultiButton />
@@ -85,22 +107,13 @@ export default function Home() {
         )}
       </div>
 
+      {/* This is the swappable UI content area */}
       {!isHydrated ? (
         <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-3xl animate-pulse">
           CONNECTING TO SERVER...
         </div>
       ) : (
-        <>
-          <Suspense fallback={<Loader />}>
-            <div className="fixed inset-0 z-[-1]">
-              <Canvas camera={{ fov: 75 }}>
-                {isDueling ? <DuelStage3D /> : <DefaultStage3D />}
-              </Canvas>
-            </div>
-          </Suspense>
-
-          {isDueling ? <DuelUI /> : (isLobbyVisible && connected && <Lobby />)}
-        </>
+        isDueling ? <DuelUI /> : (isLobbyVisible && connected && <Lobby />)
       )}
       
       {roundWinner && (

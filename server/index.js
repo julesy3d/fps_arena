@@ -657,9 +657,18 @@ const finalizeAuction = () => {
     const player = players[id];
     if (player) {
       activeFighterIds.add(player.id);
-      finalFighters.push(player);
     }
   }
+
+  fighterIds.forEach((id, index) => {
+    const player = players[id];
+    if (player) {
+      player.position = [0, 0, index === 0 ? -3 : 3];
+      player.rotation = index === 0 ? 0 : Math.PI;
+      player.health = 1;
+      finalFighters.push(player);
+    }
+  });
 
   getContendersWithBets().forEach(p => {
     try {
