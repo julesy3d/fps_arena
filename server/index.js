@@ -79,15 +79,17 @@ let duelData = {}; // { [socketId]: { hasDrawn, drawTime, hasFired, shotResult, 
 
 // Bar configuration - gets faster each round
 const getBarCycleDuration = (round) => {
-  const durations = [
-    2000, // Round 1
-    1800, // Round 2
-    1600, // Round 3
-    1400, // Round 4
-    1200, // Round 5
-    1000, // Round 6 - HELL
-  ];
-  return durations[Math.min(round - 1, durations.length - 1)];
+  // --- Exponential Difficulty Curve ---
+  const baseDuration = 2200; // The duration of Round 1 in ms.
+  const speedFactor = 0.75;  // Each round will be 75% as long as the previous one.
+  
+  // Calculation: base * factor^(round-1)
+  const duration = baseDuration * Math.pow(speedFactor, round - 1);
+  
+  // Set a minimum duration so it doesn't become impossible.
+  const minimumDuration = 800; // "Hell Mode" cap.
+  
+  return Math.max(duration, minimumDuration);
 };
 
 const BAR_TARGET_MIN = 0.60;     // 60%
@@ -129,6 +131,7 @@ const startDuel = () => {
   duelData = {};
   currentRound = 1;
   synchronizedBarStartTime = null;
+  aiShotAttempted: false;
   
   // Position fighters
   const fighterIds = Array.from(activeFighterIds);
@@ -146,7 +149,9 @@ const startDuel = () => {
       drawTime: null,
       hasFired: false,
       shotResult: null, // Will be 'hit', 'miss', or null
-      isPickingUpGun: false
+      isAI: false,
+      aiShotAttempted: false,
+      isReady: false,
     };
   });
   
@@ -166,9 +171,6 @@ const startDuel = () => {
   const gongDelay = 5000 + Math.random() * 3000;
   console.log(`⏳ GONG in ${(gongDelay / 1000).toFixed(1)}s`);
   
-  setTimeout(() => {
-    sendGong();
-  }, gongDelay);
 };
 
 // ============================================
@@ -183,6 +185,18 @@ const sendGong = () => {
   // Tell all fighters
   io.emit("duel:gong", { 
     barCycleDuration: getBarCycleDuration(currentRound)
+  });
+
+  // ADDED: AI automatically draws after a short, realistic delay
+  const fighterIds = Array.from(activeFighterIds);
+  fighterIds.forEach(id => {
+    if (duelData[id]?.isAI) {
+      const aiDrawDelay = 200 + Math.random() * 300; // 200-500ms reaction
+      setTimeout(() => {
+        console.log(`🤖 AI ${players[id].name} is drawing...`);
+        handleDraw(id);
+      }, aiDrawDelay);
+    }
   });
   
   // Start 30-second overall timeout
@@ -257,6 +271,7 @@ const advanceRoundAfterBothFail = () => {
       duelData[id].drawTime = null;
       duelData[id].hasFired = false;
       duelData[id].shotResult = null;
+      duelData[id].aiShotAttempted = false;
     }
   });
   
@@ -300,28 +315,71 @@ const startAimPhase = () => {
 let barUpdateIntervalId = null;
 
 const startBarUpdateLoop = () => {
-  // Clear existing loop
   if (barUpdateIntervalId) {
     clearInterval(barUpdateIntervalId);
   }
-  
-  // Update at 60fps
+
   barUpdateIntervalId = setInterval(() => {
     if (duelState !== "AIM_PHASE" || !synchronizedBarStartTime) {
       clearInterval(barUpdateIntervalId);
       barUpdateIntervalId = null;
       return;
     }
-    
+
     const now = Date.now();
     const elapsed = now - synchronizedBarStartTime;
     const cycleDuration = getBarCycleDuration(currentRound);
     const cycles = elapsed / cycleDuration;
-    const position = cycles % 1; // 0.0 to 1.0
-    
-    // Broadcast to ALL fighters (synchronized)
+    const position = cycles % 1;
+
     io.emit("duel:barUpdate", { position });
-  }, 1000 / 60); // 60fps
+
+    const fighterIds = Array.from(activeFighterIds);
+
+    // --- AI Shooting Logic ---
+    fighterIds.forEach(id => {
+      const playerData = duelData[id];
+      if (playerData?.isAI && !playerData.hasFired && !playerData.aiShotAttempted) {
+        // AI makes its one decision for the round as soon as the bar enters the target zone
+        if (position >= BAR_TARGET_MIN) {
+          playerData.aiShotAttempted = true; // Prevents re-rolling on subsequent frames
+
+          if (Math.random() < 0.70) {
+            // SUCCESS: Shoot now
+            console.log(`🤖 AI ${players[id].name} is shooting...`);
+            handleShoot(id);
+          } else {
+            // FAILURE: Do nothing. Let the auto-miss rule handle it.
+            console.log(`🤖 AI ${players[id].name} decided to wait (will auto-miss).`);
+          }
+        }
+      }
+    });
+
+    // --- Auto-Miss Logic ---
+    if (position > BAR_TARGET_MAX) {
+      fighterIds.forEach(id => {
+        const playerData = duelData[id];
+        if (playerData && !playerData.hasFired) {
+          console.log(`⏰ ${players[id].name} auto-missed (too slow)`);
+          playerData.hasFired = true;
+          playerData.shotResult = 'miss';
+          io.emit("duel:shot", { 
+            shooterId: id, 
+            hit: false, 
+            autoMiss: true 
+          });
+        }
+      });
+    }
+
+    // --- Round End Check ---
+    const bothFired = fighterIds.every(id => duelData[id]?.hasFired);
+    if (bothFired) {
+      evaluateRoundResults();
+    }
+
+  }, 1000 / 60);
 };
 
 // ============================================
@@ -350,7 +408,6 @@ const handleDraw = (socketId) => {
   // Check if before GONG
   if (duelState === "WAITING") {
     console.log(`💥 ${player.name} drew BEFORE gong - gun drops!`);
-    dropGun(socketId);
     return;
   }
   
@@ -462,51 +519,67 @@ const handleShoot = (socketId) => {
 // DUEL: EVALUATE ROUND RESULTS
 // ============================================
 const evaluateRoundResults = () => {
+  if (duelState !== "AIM_PHASE") return; // Prevent multiple evaluations
   console.log(`📊 Evaluating round ${currentRound} results...`);
   
-  // Stop bar updates
+  // Mark duel as temporarily paused during evaluation
+  duelState = "EVALUATING";
+
   if (barUpdateIntervalId) {
     clearInterval(barUpdateIntervalId);
     barUpdateIntervalId = null;
   }
-  
+
   const fighterIds = Array.from(activeFighterIds);
   const [p1Id, p2Id] = fighterIds;
   const p1Result = duelData[p1Id]?.shotResult;
   const p2Result = duelData[p2Id]?.shotResult;
-  
+
   console.log(`  ${players[p1Id].name}: ${p1Result}`);
   console.log(`  ${players[p2Id].name}: ${p2Result}`);
   
-  if (p1Result === 'hit' && p2Result === 'hit') {
-    // BOTH HIT - DODGE! Next round
-    console.log(`🤺 BOTH HIT - DODGE! Advancing to round ${currentRound + 1}`);
-    io.emit("duel:bothHit", { round: currentRound });
-    
-    setTimeout(() => {
-      advanceRound();
-    }, 1000); // 1 second dodge animation
-    
-  } else if (p1Result === 'hit' && p2Result === 'miss') {
-    // P1 WINS
-    console.log(`🎯 ${players[p1Id].name} WINS!`);
-    players[p2Id].health = 0;
-    endDuel("WINNER", players[p1Id]);
-    
-  } else if (p1Result === 'miss' && p2Result === 'hit') {
-    // P2 WINS
-    console.log(`🎯 ${players[p2Id].name} WINS!`);
-    players[p1Id].health = 0;
-    endDuel("WINNER", players[p2Id]);
-    
-  } else {
-    // BOTH MISS - Advance to next round (faster bar)
-    console.log(`❌ BOTH MISS - Advancing to round ${currentRound + 1} (faster!)`);
-    io.emit("duel:bothMiss", { round: currentRound });
-    
-    setTimeout(() => {
-      advanceRound();
-    }, 1000);
+  // CHANGED: Added comprehensive evaluation logic including forfeits
+  let outcome = null;
+
+  // Forfeit cases
+  if (p1Result === 'forfeit') {
+    outcome = (p2Result === 'hit') ? 'p2_wins' : 'advance';
+  } else if (p2Result === 'forfeit') {
+    outcome = (p1Result === 'hit') ? 'p1_wins' : 'advance';
+  }
+  // Normal cases
+  else if (p1Result === 'hit' && p2Result === 'hit') outcome = 'dodge';
+  else if (p1Result === 'hit' && p2Result === 'miss') outcome = 'p1_wins';
+  else if (p1Result === 'miss' && p2Result === 'hit') outcome = 'p2_wins';
+  else if (p1Result === 'miss' && p2Result === 'miss') outcome = 'advance_miss';
+
+  // Execute outcome
+  switch (outcome) {
+    case 'p1_wins':
+      console.log(`🎯 ${players[p1Id].name} WINS!`);
+      players[p2Id].health = 0;
+      endDuel("WINNER", players[p1Id]);
+      break;
+    case 'p2_wins':
+      console.log(`🎯 ${players[p2Id].name} WINS!`);
+      players[p1Id].health = 0;
+      endDuel("WINNER", players[p2Id]);
+      break;
+    case 'dodge':
+      console.log(`🤺 BOTH HIT - DODGE! Advancing to round ${currentRound + 1}`);
+      io.emit("duel:bothHit", { round: currentRound });
+      setTimeout(advanceRound, 1000);
+      break;
+    case 'advance_miss':
+      console.log(`❌ BOTH MISS - Advancing to round ${currentRound + 1}`);
+      io.emit("duel:bothMiss", { round: currentRound });
+      setTimeout(advanceRound, 1000);
+      break;
+    case 'advance': // Covers forfeit/miss cases where no one scored
+      console.log(`- No winner this round. Advancing to round ${currentRound + 1}`);
+      io.emit("duel:bothMiss", { round: currentRound }); // Can reuse 'bothMiss' UI
+      setTimeout(advanceRound, 1000);
+      break;
   }
 };
 
@@ -516,71 +589,26 @@ const evaluateRoundResults = () => {
 const advanceRound = () => {
   currentRound++;
   console.log(`⏭️ Advancing to round ${currentRound} - BAR SPEEDS UP`);
-  
-  // Reset shot states only (guns stay drawn!)
+
   const fighterIds = Array.from(activeFighterIds);
   fighterIds.forEach(id => {
     if (duelData[id]) {
       duelData[id].hasFired = false;
       duelData[id].shotResult = null;
+      duelData[id].aiShotAttempted = false;
     }
   });
-  
-  // Tell clients new round with faster bar
+
   io.emit("duel:newRound", {
     round: currentRound,
     barCycleDuration: getBarCycleDuration(currentRound),
-    message: currentRound === 2 ? "ROUND 2!" : `ROUND ${currentRound}!`
+    message: `ROUND ${currentRound}!`
   });
-  
-  // Bar automatically speeds up, continue aim phase
-  // (Bar loop is already running, it will pick up new speed)
-};
 
-// ============================================
-// DUEL: DROP GUN
-// ============================================
-const dropGun = (socketId) => {
-  const player = players[socketId];
-  const playerData = duelData[socketId];
-  
-  if (!player || !playerData) return;
-  
-  console.log(`🔫💨 ${player.name}'s gun drops`);
-  
-  // Reset state
-  playerData.hasDrawn = false;
-  playerData.barCycleStartTime = null;
-  playerData.hasFired = false;
-  playerData.isPickingUpGun = true;
-  
-  // Tell player
-  const socket = io.sockets.sockets.get(socketId);
-  if (socket) {
-    socket.emit("duel:gunDropped");
-  }
-};
-
-// ============================================
-// DUEL: PICKUP GUN
-// ============================================
-const handlePickup = (socketId) => {
-  const player = players[socketId];
-  const playerData = duelData[socketId];
-  
-  if (!player || !playerData || !playerData.isPickingUpGun) {
-    return;
-  }
-  
-  console.log(`🔫✅ ${player.name} picked up gun`);
-  
-  playerData.isPickingUpGun = false;
-  
-  // Tell player they can draw again
-  const socket = io.sockets.sockets.get(socketId);
-  if (socket) {
-    socket.emit("duel:pickupSuccess");
-  }
+  // ADDED: Reset the bar timer for the new round and restart the loop
+  duelState = "AIM_PHASE"; // Set state back to AIM
+  synchronizedBarStartTime = Date.now();
+  startBarUpdateLoop();
 };
 
 // ============================================
@@ -1137,23 +1165,48 @@ io.on("connection", (socket) => {
   socket.on("duel:shoot", () => {
     handleShoot(socket.id);
   });
-  
-  socket.on("duel:pickup", () => {
-    handlePickup(socket.id);
+
+  socket.on("duel:playerReady", () => {
+    const playerId = socket.id;
+    if (duelData[playerId]) {
+      console.log(`✅ Player ${players[playerId].name} is ready.`);
+      duelData[playerId].isReady = true;
+
+      const fighterIds = Array.from(activeFighterIds);
+      const allReady = fighterIds.every(id => duelData[id]?.isReady);
+
+      // CRITICAL FIX: Check if all players are ready AND we are still in the "WAITING" state.
+      if (allReady && duelState === 'WAITING') {
+        // Immediately change the state to prevent this block from ever running again for this duel.
+        duelState = 'CINEMATIC'; 
+        
+        console.log("🔥 All players are ready. Starting the duel cinematic.");
+        io.emit("duel:bothReady");
+
+        const gongDelay = 5000 + Math.random() * 3000;
+        console.log(`⏳ GONG in ${(gongDelay / 1000).toFixed(1)}s`);
+        setTimeout(() => {
+          sendGong();
+        }, gongDelay);
+      }
+    }
   });
 
   socket.on("disconnect", () => {
     console.log("🔥 A user disconnected:", socket.id);
     if (players[socket.id]) {
-      removePlayerHitbox(socket.id);
-      betRequestTimestamps.delete(socket.id);
+      // ... (other disconnect logic)
       
-      if (duelState === "ACTIVE" && activeFighterIds.has(socket.id)) {
+      // CHANGED: Correctly checks for active duel state
+      if (
+        (duelState === "DRAW_PHASE" || duelState === "AIM_PHASE") && 
+        activeFighterIds.has(socket.id)
+      ) {
         console.log(`💀 Fighter ${players[socket.id].name} disconnected during duel`);
         players[socket.id].health = 0;
         
         const remainingFighters = Array.from(activeFighterIds).filter(id => 
-          id !== socket.id && players[id] && players[id].health > 0
+          id !== socket.id && players[id] // No health check needed, they are the only one left
         );
         
         if (remainingFighters.length === 1) {
@@ -1165,6 +1218,21 @@ io.on("connection", (socket) => {
       delete players[socket.id];
       broadcastLobbyState();
       checkAndManageCountdown(getTopFighterIds());
+    }
+  });
+
+  // ADDED: Handler to activate AI mode for the opponent
+  socket.on("duel:requestAIMode", () => {
+    const requesterId = socket.id;
+
+    if (duelData[requesterId]) {
+      duelData[requesterId].isAI = true;
+      console.log(`🤖 AI Mode activated for player: ${players[requesterId].name}`);
+      
+      const requesterSocket = io.sockets.sockets.get(requesterId);
+      if (requesterSocket) {
+        requesterSocket.emit("duel:aiModeConfirmed", { aiPlayerId: requesterId });
+      }
     }
   });
 });

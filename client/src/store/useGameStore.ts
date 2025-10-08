@@ -32,6 +32,7 @@ interface StoreState {
   lobbyCountdown: number | null;
   roundWinner: { name: string; pot: number } | null;
   fighters: Player[]; // The 2 fighters in current duel
+  isHydrated: boolean; // NEW: Flag to track if we have server state
 }
 
 interface StoreActions {
@@ -40,6 +41,7 @@ interface StoreActions {
   clearWinner: () => void;
   reset: () => void;
   reconnectSocket: () => void;
+  setHydrated: (hydrated: boolean) => void; // NEW: Action to set the flag
 }
 
 type GameState = StoreState & StoreActions;
@@ -55,10 +57,14 @@ const initialState: StoreState = {
   lobbyCountdown: null,
   roundWinner: null,
   fighters: [],
+  isHydrated: false, // NEW: Starts as false
 };
 
 export const useGameStore = create<GameState>((set, get) => ({
   ...initialState,
+
+  // NEW: Action to set the hydration flag
+  setHydrated: (isHydrated) => set({ isHydrated }),
 
   connectSocket: () => {
     if (get().socket) return;
@@ -90,8 +96,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     newSocket.on("lobby:countdown", (countdown) =>
       set({ lobbyCountdown: countdown }),
     );
-
-    // REMOVED: round:timer (no longer used in duel)
     
     newSocket.on("game:state", (gamePlayers) =>
       set((state) => ({ players: { ...state.players, ...gamePlayers } })),
@@ -102,13 +106,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       const phase = data.phase as StoreState["gamePhase"];
       set({ gamePhase: phase });
 
+      // CRITICAL FIX: The first time we receive an authoritative game phase,
+      // we know the app is "hydrated" with real data.
+      if (!get().isHydrated) {
+        set({ isHydrated: true });
+      }
+
       if (phase === "IN_ROUND") {
         set({ fighters: data.fighters, roundWinner: null });
       } else if (phase === "POST_ROUND") {
         set({ roundWinner: data.winnerData });
       } else if (phase === "LOBBY") {
-        const { socket, isConnected } = get();
-        set({ ...initialState, socket, isConnected, lobbyPhase: 'BETTING' });
+        const { socket, isConnected, isHydrated } = get(); // Keep isHydrated true
+        set({ ...initialState, socket, isConnected, isHydrated, lobbyPhase: 'BETTING' });
       }
     });
   },
@@ -123,8 +133,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   reset: () => {
-    const { socket, isConnected } = get();
-    set({ ...initialState, socket, isConnected });
+    // Keep the socket and connection status on reset, but reset hydration
+    const { socket } = get();
+    set({ ...initialState, socket, isConnected: false });
   },
 
   reconnectSocket: () => {
