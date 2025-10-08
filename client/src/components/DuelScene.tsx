@@ -5,6 +5,24 @@ import { useEffect, useState, useRef } from "react";
 import { useGameStore } from "@/store/useGameStore";
 import { Opponent } from "./Opponent";
 
+const CameraDebug = () => {
+  const { camera, gl } = useThree();
+  
+  useEffect(() => {
+    console.log('📷 CAMERA STATE:', {
+      position: camera.position.toArray(),
+      rotation: camera.rotation.toArray(),
+      zoom: camera.zoom,
+      fov: 'fov' in camera ? camera.fov : 'N/A',
+      aspect: camera.aspect,
+      canvasSize: [gl.domElement.width, gl.domElement.height]
+    });
+  }, [camera, gl]);
+  
+  return null;
+};
+
+
 // ============================================
 // AUDIO MANAGER (No changes)
 // ============================================
@@ -36,28 +54,6 @@ const useAudio = () => {
   const playGong = () => { if (gongAudioRef.current) { gongAudioRef.current.currentTime = 0; gongAudioRef.current.play().catch(e => console.warn('Sound failed:', e)); } };
   
   return { playClick, playClack, playHammer, playShoot, playGong };
-};
-
-// ============================================
-// CAMERA - EFFICIENT STATIC POSITION (No changes)
-// ============================================
-const StaticDuelCamera = () => {
-  const { camera, controls } = useThree();
-  
-  useEffect(() => {
-    if (controls && 'enabled' in controls) {
-      controls.enabled = false;
-    }
-    camera.position.set(2, 2, 7);
-    camera.lookAt(0, 0, 0);
-    return () => {
-      if (controls && 'enabled' in controls) {
-        controls.enabled = true;
-      }
-    };
-  }, [camera, controls]);
-  
-  return null;
 };
 
 // ============================================
@@ -112,15 +108,29 @@ const DuelOverlay = ({ message, canClick, actionType }: { message: string; canCl
 // 3D SCENE CONTENT (No changes)
 // ============================================
 const DuelSceneContent = ({ selfId, fighters }: { selfId: string, fighters: any[] }) => {
+
+    console.log('🎯 RENDERING SCENE WITH FIGHTERS:', 
+        fighters.map(f => ({ 
+            name: f.name, 
+            position: f.position,
+            rotation: f.rotation 
+        }))
+    );
+
+    console.log('🎯 SCENE:', {
+        selfId,
+        fighters: fighters.map(f => ({ id: f.id, name: f.name, isSelf: f.id === selfId }))
+    });
+
   return (
     <>
+      <CameraDebug />
       <ambientLight intensity={0.6} />
       <directionalLight position={[10, 10, 5]} intensity={0.8} />
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
         <planeGeometry args={[50, 50]} />
         <meshStandardMaterial color="#8B7355" />
       </mesh>
-      <StaticDuelCamera />
       {fighters.map(fighter => (
         <Opponent key={fighter.id} position={fighter.position} rotation={fighter.rotation} health={fighter.health} />
       ))}
