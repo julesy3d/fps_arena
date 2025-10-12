@@ -3,24 +3,7 @@
 import { useThree } from "@react-three/fiber";
 import { useEffect, useState, useRef } from "react";
 import { useGameStore } from "@/store/useGameStore";
-import { Opponent } from "./Opponent";
-
-const CameraDebug = () => {
-  const { camera, gl } = useThree();
-  
-  useEffect(() => {
-    console.log('📷 CAMERA STATE:', {
-      position: camera.position.toArray(),
-      rotation: camera.rotation.toArray(),
-      zoom: camera.zoom,
-      fov: 'fov' in camera ? camera.fov : 'N/A',
-      aspect: camera.aspect,
-      canvasSize: [gl.domElement.width, gl.domElement.height]
-    });
-  }, [camera, gl]);
-  
-  return null;
-};
+import { Fighter } from "./Fighter";
 
 
 // ============================================
@@ -117,23 +100,22 @@ const DuelSceneContent = ({ selfId, fighters }: { selfId: string, fighters: any[
         }))
     );
 
-    console.log('🎯 SCENE:', {
-        selfId,
-        fighters: fighters.map(f => ({ id: f.id, name: f.name, isSelf: f.id === selfId }))
-    });
-
   return (
     <>
-      <CameraDebug />
       <ambientLight intensity={0.6} />
       <directionalLight position={[10, 10, 5]} intensity={0.8} />
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
         <planeGeometry args={[50, 50]} />
         <meshStandardMaterial color="#8B7355" />
       </mesh>
-      {fighters.map(fighter => (
-        <Opponent key={fighter.id} position={fighter.position} rotation={fighter.rotation} health={fighter.health} />
-      ))}
+        {fighters.map(fighter => (
+          <Fighter 
+            key={fighter.id} 
+            position={fighter.position} 
+            rotation={fighter.rotation} 
+            animationState={fighter.animationState}
+          />
+        ))}
     </>
   );
 };
@@ -199,79 +181,141 @@ export const DuelUI = () => {
     };
 
     const onDuelState = () => { setMessage("HIGH NOON APPROACHES..."); setCanClick(false); setActionType(null); setBarVisible(false); };
-    const onGong = () => { playGong(); setMessage("DRAW!"); setCanClick(true); setActionType('draw'); setBarVisible(false); };
-    const onDrawSuccess = () => { setMessage("WAITING FOR OPPONENT..."); setCanClick(false); setActionType(null); };
-    const onAimPhase = () => { setMessage("AIM!"); setCanClick(true); setActionType('shoot'); setBarVisible(true); };
+    //const onGong = () => { playGong(); setMessage("DRAW!"); setCanClick(true); setActionType('draw'); setBarVisible(false); };
+    //const onDrawSuccess = () => { setMessage("WAITING FOR OPPONENT..."); setCanClick(false); setActionType(null); };
+    //const onAimPhase = () => { setMessage("AIM!"); setCanClick(true); setActionType('shoot'); setBarVisible(true); };
     const onBarUpdate = ({ position }: { position: number }) => setBarPosition(position);
-    const onBothHit = () => { setMessage("DODGE!"); setCanClick(false); setActionType(null); };
+    //const onBothHit = () => { setMessage("DODGE!"); setCanClick(false); setActionType(null); };
     const onBothMiss = () => { setMessage("BOTH MISSED!"); setCanClick(false); setActionType(null); };
     const onNewRound = ({ message: serverMessage }: { message: string }) => { setMessage(serverMessage); setCanClick(true); setActionType('shoot'); setBarVisible(true); hasShotThisRound.current = false; };
     const onBothFailedDraw = () => { setMessage("BOTH FAILED - PICK UP GUNS!"); setCanClick(true); setActionType('draw'); setBarVisible(false); };
-    const onShot = ({ shooterId, hit }: { shooterId: string, hit: boolean }) => { if (shooterId === selfId && hit) { playShoot(); } };
-    const onOpponentDrew = () => console.log(`👁️ Opponent drew weapon`);
+    //const onShot = ({ shooterId, hit }: { shooterId: string, hit: boolean }) => { if (shooterId === selfId && hit) { playShoot(); } };
+    //const onOpponentDrew = () => console.log(`👁️ Opponent drew weapon`);
+    
+    const onGong = () => { 
+      playGong(); 
+      setMessage("DRAW!"); 
+      setCanClick(true); 
+      setActionType('draw'); 
+      setBarVisible(false); 
+    };
+
+    const onDrawSuccess = () => { 
+      setMessage("WAITING FOR OPPONENT..."); 
+      setCanClick(false); 
+      setActionType(null);
+      useGameStore.getState().updateFighterAnimation(selfId, 'armed'); // Changed from 'draw'
+    };
+
+    const onOpponentDrew = ({ playerId }: { playerId: string }) => {
+      useGameStore.getState().updateFighterAnimation(playerId, 'armed'); // Changed from 'draw'
+    };
+
+    const onAimPhase = () => { 
+      setMessage("AIM!"); 
+      setCanClick(true); 
+      setActionType('shoot'); 
+      setBarVisible(true);
+      fighters.forEach(f => {
+        useGameStore.getState().updateFighterAnimation(f.id, 'armed'); // Changed from 'aiming'
+      });
+    };
+
+    const onShot = ({ shooterId, hit }: { shooterId: string, hit: boolean }) => { 
+      if (shooterId === selfId && hit) { 
+        playShoot(); 
+      }
+      
+      // NEW: Trigger shooting animation
+      useGameStore.getState().updateFighterAnimation(shooterId, 'shooting');
+    };
+
+    const onBothHit = () => { 
+      setMessage("DODGE!"); 
+      setCanClick(false); 
+      setActionType(null);
+      
+      // NEW: Both dodge
+      fighters.forEach(f => {
+        useGameStore.getState().updateFighterAnimation(f.id, 'dodging');
+      });
+    };
+
     const onGamePhaseChange = ({ phase, winnerData }: any) => {
       if (phase === "POST_ROUND" && winnerData) {
-        // Reset waiting state for the next round
-        setIsWaitingForOpponent(true); 
-        setMessage(""); // Clear message for post-round screen
-        const selfPlayer = fighters.find(f => f.id === selfId);
-        if (selfPlayer && typeof selfPlayer.health === 'number' && selfPlayer.health > 0) {
-          // You could show a victory message here, but the global winner banner in page.tsx handles it.
+        if (winnerData.isSplit) {
+          // Both players show defeat (sad)
+          fighters.forEach(f => {
+            useGameStore.getState().updateFighterAnimation(f.id, 'defeat');
+          });
         } else {
-          // Same for defeat message.
+          // Winner celebrates, loser dies
+          fighters.forEach(f => {
+            if (f.name === winnerData.name) {
+              useGameStore.getState().updateFighterAnimation(f.id, 'victory');
+            } else {
+              useGameStore.getState().updateFighterAnimation(f.id, 'death');
+            }
+          });
         }
-        setCanClick(false); setActionType(null); setBarVisible(false);
+        
+        setIsWaitingForOpponent(true); 
+        setMessage("");
+        setCanClick(false); 
+        setActionType(null); 
+        setBarVisible(false);
       }
     };
-    
-    // Register all listeners
-    socket.on("duel:bothReady", onBothReady);
-    socket.on("duel:state", onDuelState);
-    socket.on("duel:gong", onGong);
-    socket.on("duel:drawSuccess", onDrawSuccess);
-    socket.on("duel:aimPhase", onAimPhase);
-    socket.on("duel:barUpdate", onBarUpdate);
-    socket.on("duel:bothHit", onBothHit);
-    socket.on("duel:bothMiss", onBothMiss);
-    socket.on("duel:newRound", onNewRound);
-    socket.on("duel:bothFailedDraw", onBothFailedDraw);
-    socket.on("duel:shot", onShot);
-    socket.on("duel:opponentDrew", onOpponentDrew);
-    socket.on("game:phaseChange", onGamePhaseChange);
-    
-    // Cleanup function
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      socket.off("duel:bothReady", onBothReady);
-      socket.off("duel:state", onDuelState);
-      socket.off("duel:gong", onGong);
-      socket.off("duel:drawSuccess", onDrawSuccess);
-      socket.off("duel:aimPhase", onAimPhase);
-      socket.off("duel:barUpdate", onBarUpdate);
-      socket.off("duel:bothHit", onBothHit);
-      socket.off("duel:bothMiss", onBothMiss);
-      socket.off("duel:newRound", onNewRound);
-      socket.off("duel:bothFailedDraw", onBothFailedDraw);
-      socket.off("duel:shot", onShot);
-      socket.off("duel:opponentDrew", onOpponentDrew);
-      socket.off("game:phaseChange", onGamePhaseChange);
-    };
-  }, [socket, selfId, playGong, fighters, isAIMode]); // Added isAIMode to dependency array
-  
-  const handleClick = () => {
-    if (!canClick || !socket || !actionType) return;
-    if (actionType === 'shoot' && hasShotThisRound.current) return;
-    
-    if (actionType === 'draw') {
-        socket.emit("duel:draw");
-        setCanClick(false);
-    } else if (actionType === 'shoot') {
-        console.log(`CLIENT CLICK: Shooting at bar position ${barPosition.toFixed(2)}`);
-        socket.emit("duel:shoot");
-        hasShotThisRound.current = true;
-        setCanClick(false);
-    }
-  };
+
+        
+        // Register all listeners
+        socket.on("duel:bothReady", onBothReady);
+        socket.on("duel:state", onDuelState);
+        socket.on("duel:gong", onGong);
+        socket.on("duel:drawSuccess", onDrawSuccess);
+        socket.on("duel:aimPhase", onAimPhase);
+        socket.on("duel:barUpdate", onBarUpdate);
+        socket.on("duel:bothHit", onBothHit);
+        socket.on("duel:bothMiss", onBothMiss);
+        socket.on("duel:newRound", onNewRound);
+        socket.on("duel:bothFailedDraw", onBothFailedDraw);
+        socket.on("duel:shot", onShot);
+        socket.on("duel:opponentDrew", onOpponentDrew);
+        socket.on("game:phaseChange", onGamePhaseChange);
+        
+        // Cleanup function
+        return () => {
+          window.removeEventListener('keydown', handleKeyDown);
+          socket.off("duel:bothReady", onBothReady);
+          socket.off("duel:state", onDuelState);
+          socket.off("duel:gong", onGong);
+          socket.off("duel:drawSuccess", onDrawSuccess);
+          socket.off("duel:aimPhase", onAimPhase);
+          socket.off("duel:barUpdate", onBarUpdate);
+          socket.off("duel:bothHit", onBothHit);
+          socket.off("duel:bothMiss", onBothMiss);
+          socket.off("duel:newRound", onNewRound);
+          socket.off("duel:bothFailedDraw", onBothFailedDraw);
+          socket.off("duel:shot", onShot);
+          socket.off("duel:opponentDrew", onOpponentDrew);
+          socket.off("game:phaseChange", onGamePhaseChange);
+        };
+      }, [socket, selfId, playGong, fighters, isAIMode]); // Added isAIMode to dependency array
+      
+      const handleClick = () => {
+        if (!canClick || !socket || !actionType) return;
+        if (actionType === 'shoot' && hasShotThisRound.current) return;
+        
+        if (actionType === 'draw') {
+            socket.emit("duel:draw");
+            setCanClick(false);
+        } else if (actionType === 'shoot') {
+            console.log(`CLIENT CLICK: Shooting at bar position ${barPosition.toFixed(2)}`);
+            socket.emit("duel:shoot");
+            hasShotThisRound.current = true;
+            setCanClick(false);
+        }
+      };
   
   return (
     <div className="absolute inset-0 cursor-crosshair" onClick={handleClick}>
