@@ -12,6 +12,8 @@ export interface Player {
   position: [number, number, number];
   rotation: number;
   health?: number;
+  animationState?: 'idle' | 'armed' | 'shooting' | 'dodging' | 'death' | 'victory' | 'defeat';
+
   stats?: {
     kills: number;
     deaths: number;
@@ -30,7 +32,7 @@ interface StoreState {
   isVerified: boolean;
   players: Record<string, Player>;
   lobbyCountdown: number | null;
-  roundWinner: { name: string; pot: number } | null;
+  roundWinner: { name: string; pot: number; isSplit?: boolean } | null;
   fighters: Player[]; // The 2 fighters in current duel
   isHydrated: boolean; // NEW: Flag to track if we have server state
 }
@@ -41,7 +43,8 @@ interface StoreActions {
   clearWinner: () => void;
   reset: () => void;
   reconnectSocket: () => void;
-  setHydrated: (hydrated: boolean) => void; // NEW: Action to set the flag
+  setHydrated: (hydrated: boolean) => void;
+  updateFighterAnimation: (fighterId: string, animationState: Player['animationState']) => void;
 }
 
 type GameState = StoreState & StoreActions;
@@ -127,6 +130,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     get().socket?.emit("player:setName", name);
     set({ playerName: name });
   },
+
+  updateFighterAnimation: (fighterId: string, animationState: Player['animationState']) => {
+    set((state) => ({
+      fighters: state.fighters.map(f => 
+        f.id === fighterId ? { ...f, animationState } : f
+      )
+    }));
+  },
+
 
   clearWinner: () => {
     set({ roundWinner: null });

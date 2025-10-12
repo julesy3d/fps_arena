@@ -131,7 +131,6 @@ const startDuel = () => {
   duelData = {};
   currentRound = 1;
   synchronizedBarStartTime = null;
-  aiShotAttempted: false;
   
   // Position fighters
   const fighterIds = Array.from(activeFighterIds);

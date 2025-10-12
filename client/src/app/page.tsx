@@ -34,13 +34,6 @@ export default function Home() {
   const { connected } = useWallet();
   const [isLobbyVisible, setLobbyVisible] = useState(false);
   const [isTitleHovered, setTitleHovered] = useState(false);
-
-  console.log('🎮 PAGE RENDER:', {
-    isHydrated,
-    gamePhase,
-    fightersCount: fighters?.length,
-    isDueling: fighters?.some((g) => g.id === socket?.id) && gamePhase === "IN_ROUND"
-  });
   
   // SOLVES HYDRATION ERROR: This standard hook ensures client-side-only components
   // are not rendered during the server-side pass, preventing mismatches.
@@ -72,16 +65,15 @@ export default function Home() {
       <StreamPlaceholder isBlurred={isStreamBlurred} />
 
       {/* The Canvas is PERSISTENT. It is created once and never destroyed. */}
+    {isHydrated && (isDueling || gamePhase === "POST_ROUND") && (
       <div className="fixed inset-0 z-[-1]">
         <Suspense fallback={<Loader />}>
           <Canvas camera={{ fov: 75, position: [2, 2, 7] }}>
-            {/* The CONTENT inside the Canvas is swapped, but the Canvas itself remains stable.
-                This prevents the WebGL context from being destroyed, fixing the camera bug.
-            */}
-            {isHydrated && isDueling ? <DuelStage3D /> : <DefaultStage3D />}
+            <DuelStage3D />
           </Canvas>
         </Suspense>
       </div>
+    )}
 
       {/* All other persistent UI elements live here */}
       <div className="fixed top-4 left-4 z-40">
@@ -116,12 +108,21 @@ export default function Home() {
         isDueling ? <DuelUI /> : (isLobbyVisible && connected && <Lobby />)
       )}
       
-      {roundWinner && (
-        <div className="absolute top-1/3 left-1/2 z-20 -translate-x-1/2 border-4 border-black bg-yellow-400 p-8 text-center">
-           <h2 className="font-title text-4xl font-bold">WINNER!</h2>
-           <p className="mt-2 text-2xl">{roundWinner.name} takes the pot of {roundWinner.pot} Lamports!</p>
-       </div>
-     )}
+      {roundWinner && gamePhase === "POST_ROUND" && (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="border-8 border-yellow-400 bg-black p-12 text-center">
+            <h2 className="font-title text-7xl font-bold text-yellow-400 mb-4">
+              {roundWinner.isSplit ? "DRAW!" : "VICTORY!"}
+            </h2>
+            <p className="text-3xl text-white">
+              {roundWinner.name}
+            </p>
+            <p className="text-2xl text-gray-400 mt-4">
+              +{roundWinner.pot} Lamports
+            </p>
+          </div>
+        </div>
+      )}
 
       <footer className="fixed bottom-0 left-0 right-0 border-t border-gray-700 bg-black/80 p-1 text-center text-xs text-gray-400">
         Top 2 bidders fight at high noon. Winner takes 90% of the pot, 10% burns.
