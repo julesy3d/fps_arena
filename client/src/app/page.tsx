@@ -1,17 +1,25 @@
 "use client";
 
 import { Canvas } from "@react-three/fiber";
-import { Suspense, useEffect, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import { Lobby } from "@/components/Lobby";
 import { TitleOverlay } from "@/components/TitleOverlay";
 import { useGameStore } from "@/store/useGameStore";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { DuelUI, DuelStage3D } from "@/components/DuelScene";
+import { AsciiRenderer } from "@react-three/drei";
+import { useThree } from "@react-three/fiber";
+
+declare global {
+  interface Window {
+    solana?: any;
+    phantom?: any;
+  }
+}
 
 // Helper Components
 const Loader = () => ( <div className="absolute inset-0 z-50 bg-black flex items-center justify-center text-white text-2xl font-bold">LOADING...</div> );
-const DefaultStage3D = () => ( <><ambientLight intensity={0.5} /><directionalLight position={[10, 10, 5]} /></> );
 
 const ConnectionStatus = () => {
   const isConnected = useGameStore((state) => state.isConnected);
@@ -38,11 +46,34 @@ export default function Home() {
   // SOLVES HYDRATION ERROR: This standard hook ensures client-side-only components
   // are not rendered during the server-side pass, preventing mismatches.
   const [mounted, setMounted] = useState(false);
+  const [walletReady, setWalletReady] = useState(false); // ADD THIS
 
   useEffect(() => {
     setMounted(true);
     connectSocket();
   }, [connectSocket]);
+
+  // ADD THIS ENTIRE BLOCK:
+  useEffect(() => {
+    // Wait for wallet to be ready
+    const checkWallet = setInterval(() => {
+      if (window.solana || window.phantom) {
+        setWalletReady(true);
+        clearInterval(checkWallet);
+      }
+    }, 100);
+    
+    // Timeout after 3 seconds
+    const timeout = setTimeout(() => {
+      setWalletReady(true);
+      clearInterval(checkWallet);
+    }, 3000);
+    
+    return () => {
+      clearInterval(checkWallet);
+      clearTimeout(timeout);
+    };
+  }, []);
 
   const isFighter = fighters?.some((g) => g.id === socket?.id) ?? false;
   const isDueling = isFighter && gamePhase === "IN_ROUND";
@@ -65,15 +96,32 @@ export default function Home() {
       <StreamPlaceholder isBlurred={isStreamBlurred} />
 
       {/* The Canvas is PERSISTENT. It is created once and never destroyed. */}
-    {isHydrated && (isDueling || gamePhase === "POST_ROUND") && (
-      <div className="fixed inset-0 z-[-1]">
-        <Suspense fallback={<Loader />}>
-          <Canvas camera={{ fov: 75, position: [2, 2, 7] }}>
-            <DuelStage3D />
-          </Canvas>
-        </Suspense>
-      </div>
-    )}
+      {isHydrated && (isDueling || gamePhase === "POST_ROUND") && (
+        <div className="fixed inset-0 z-[-1]">
+          <Suspense fallback={<Loader />}>
+            <Canvas 
+              camera={{ fov: 75, position: [2, 2, 7]}}
+              frameloop="demand"
+              gl={{ 
+                powerPreference: "high-performance",
+                antialias: false
+              }}
+              dpr={[1, 1.5]}
+            >
+            <color attach="background" args={['#ffffff']} />
+            <AsciiRenderer 
+              fgColor="black"
+              bgColor="white"
+              characters=" .:-+*=%@#"
+              color={false}
+              invert={false}
+              resolution={0.25}
+            />
+              <DuelStage3D />
+            </Canvas>
+          </Suspense>
+        </div>
+      )}
 
       {/* All other persistent UI elements live here */}
       <div className="fixed top-4 left-4 z-40">
@@ -83,7 +131,7 @@ export default function Home() {
       <TitleOverlay onHover={setTitleHovered} />
       
       {/* SOLVES HYDRATION ERROR: This check ensures the wallet button only renders on the client. */}
-      {mounted && !connected && !isTitleHovered && (
+      {mounted && walletReady && !connected && !isTitleHovered && (
         <div className="fixed top-4 right-4 z-40 wallet-button-container">
           <WalletMultiButton />
         </div>

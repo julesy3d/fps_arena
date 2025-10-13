@@ -101,13 +101,14 @@ const DuelSceneContent = ({ selfId, fighters }: { selfId: string, fighters: any[
     );
 
   return (
-    <>
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[10, 10, 5]} intensity={0.8} />
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
-        <planeGeometry args={[50, 50]} />
-        <meshStandardMaterial color="#8B7355" />
-      </mesh>
+      <>
+        {/* Minimal lighting to reduce background artifacts */}
+        <ambientLight intensity={0.4} />
+        <directionalLight position={[5, 10, 5]} intensity={1.2} />
+        <directionalLight position={[-5, 5, -5]} intensity={0.5} />
+        
+        {/* NO ground plane - prevents ASCII rendering large empty areas */}
+        
         {fighters.map(fighter => (
           <Fighter 
             key={fighter.id} 
@@ -116,8 +117,8 @@ const DuelSceneContent = ({ selfId, fighters }: { selfId: string, fighters: any[
             animationState={fighter.animationState}
           />
         ))}
-    </>
-  );
+      </>
+    );
 };
 
 
