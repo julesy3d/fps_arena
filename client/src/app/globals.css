@@ -1,6 +1,6 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital@0;1&display=swap');
 @import "@solana/wallet-adapter-react-ui/styles.css";
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital@0;1&display=swap');
 
 body {
   font-family: 'IBM Plex Mono', monospace;
