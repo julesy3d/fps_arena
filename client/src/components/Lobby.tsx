@@ -23,32 +23,58 @@ const BetControls = ({
   };
 
   return (
-    <div className="flex items-center justify-end gap-1">
+    <div className="flex items-center justify-end gap-2">
       <input
         type="number"
         min="1000"
         step="1000"
         value={amount}
         onChange={(e) => setAmount(parseInt(e.target.value, 10) || 1000)}
-        className="w-24 border border-gray-600 bg-black p-1 text-center text-white"
+        className="w-24 bg-transparent text-center focus:outline-none blinking-cursor"
         disabled={isProcessing}
       />
       <button 
         onClick={handleBet} 
         disabled={isProcessing} 
-        className="px-2 py-1 text-xs text-green-400 opacity-75 hover:opacity-100 disabled:text-gray-500"
+        className="text-green-400 opacity-75 hover:opacity-100 disabled:text-gray-500"
       >
-        {isProcessing ? `[${statusMessage}]` : "[BET]"}
+        <span className="text-subtext0">[</span>BET<span className="text-subtext0">]</span>
       </button>
       <button 
         onClick={onCancel} 
         disabled={isProcessing} 
-        className="px-2 py-1 text-xs text-red-400 opacity-75 hover:opacity-100 disabled:text-gray-500"
+        className="text-maroon opacity-75 hover:opacity-100 disabled:text-gray-500"
       >
-        [CANCEL]
+        <span className="text-subtext0">[</span>CANCEL<span className="text-subtext0">]</span>
       </button>
     </div>
   );
+};
+
+const AsciiTitle = () => {
+    const title = `
+$$$$$$$\\             $$\\      $$$$$$\\  $$\\                  $$\\
+$$__$$\\          $$ |    $$__$$\\$$ |                $$ |
+$$| $$|$$$$$$\\ $$$$$$\   $$/  \\__|$$$$$$$\\  $$$$$$\\ $$$$$$\       $$$$$$\\   $$$$$$\\
+$$$$$$$|$$  __$$\\\\_$$  _|  \\$$$$$$\\$$  __$$\\ $$__$$\\\\_$$  _|   $$  __$$\\ $$  __$$\\
+$$____/$$ / $$|$$|     \\____$$\\$$| $$|$$/$$ | $$|      $$/ $$|$$/$$ |
+$$|     $$| $$|$$|$$\\   $$|$$|$$ |$$| $$|$$|$$\\   $$| $$|$$|$$ |
+$$|      \\$$$$$$ | \\$$$$  |\\$$$$$$  |$$ |$$ |\\$$$$$$  | \\$$$$  |$$\\$$$$$$$ |\\$$$$$$$ |
+\\__|       \\______/   \\____/  \\______/ \\__|  \\__| \\______/   \\____/ \\__|\____$$ | \\____$$ |
+                                                                        $$\\   $$|$$\\  $$ |
+                                                                        \\$$$$$$  |\\$$$$$$  |
+                                                                         \\______/  \\______/
+    `;
+    const colors = ['rosewater', 'flamingo', 'red', 'maroon', 'peach', 'yellow', 'green', 'teal'];
+    return (
+        <pre className="text-center">
+            {title.split('\\n').map((line, i) => (
+                <span key={i} style={{ color: `var(--color-${colors[i % colors.length]})` }}>
+                    {line}
+                </span>
+            ))}
+        </pre>
+    );
 };
 
 export const Lobby = () => {
@@ -106,7 +132,6 @@ export const Lobby = () => {
     socket.emit("player:requestBet", { amount });
   };
 
-  // Socket event handlers for new bet flow
   useEffect(() => {
     if (!socket || !signTransaction) return;
 
@@ -181,7 +206,7 @@ export const Lobby = () => {
               onClick={() => setIsBettingUiActive(true)} 
               className="text-yellow-400 opacity-75 hover:opacity-100"
             >
-              [RAISE]
+              <span className="text-subtext0">[</span>RAISE<span className="text-subtext0">]</span>
             </button>
           </div>
         );
@@ -191,33 +216,55 @@ export const Lobby = () => {
         onClick={() => setIsBettingUiActive(true)} 
         className="w-full text-center text-green-400 opacity-75 hover:opacity-100"
       >
-        [ PLACE A BID TO COMPETE ]
+        <span className="text-subtext0">[</span> PLACE A BID TO COMPETE <span className="text-subtext0">]</span>
       </button>
     );
   }
 
+  const PlayerTable = ({ players, title, color }: { players: Player[], title: string, color: string }) => (
+    <div role="grid">
+      <h3 className={`mb-2 text-lg font-semibold ${color} typing-effect`}>{title}</h3>
+      <div className="text-xs text-subtext0" role="row">
+        <div className="grid grid-cols-12 gap-2 p-2" role="rowheader">
+          <div className="col-span-1 text-center" role="columnheader">RANK</div>
+          <div className="col-span-4" role="columnheader">NAME</div>
+          <div className="col-span-1 text-center" role="columnheader">KILLS</div>
+          <div className="col-span-1 text-center" role="columnheader">DEATHS</div>
+          <div className="col-span-1 text-center" role="columnheader">ROUNDS</div>
+          <div className="col-span-2 text-right" role="columnheader">NET GAIN</div>
+          <div className="col-span-2 text-right" role="columnheader">CURRENT BID</div>
+        </div>
+      </div>
+      <div className="text-overlay2" role="presentation">
+        {'─'.repeat(100)}
+      </div>
+      <div role="rowgroup">
+        {players.map(p => <PlayerRow key={p.id} player={p} />)}
+      </div>
+    </div>
+  );
+
   const PlayerRow = ({ player }: { player: Player }) => {
     const rank = playerRanks.get(player.id);
     return (
-        <tr className={`border-b border-gray-800/50 ${player.id === selfId ? "bg-blue-900/40" : ""}`}>
-            <td className="p-2 w-16 text-center text-gray-500">{rank ? `#${rank}` : '-'}</td>
-            <td className="p-2">{player.name}</td>
-            <td className="p-2 w-20 text-center">{player.stats?.kills ?? 0}</td>
-            <td className="p-2 w-20 text-center">{player.stats?.deaths ?? 0}</td>
-            <td className="p-2 w-20 text-center">{player.stats?.totalGamesPlayed ?? 0}</td>
-            <td className={`p-2 w-40 text-right ${ (player.stats?.netWinnings ?? 0) > 0 ? 'text-green-400' : 'text-gray-500'}`}>
-              {player.stats?.netWinnings ?? 0}
-            </td>
-            <td className="p-2 w-64 text-right">{renderBidCell(player)}</td>
-        </tr>
+      <div className={`grid grid-cols-12 gap-2 p-2 ${player.id === selfId ? "bg-surface1" : ""}`} role="row">
+        <div className="col-span-1 text-center text-subtext0" role="gridcell">{rank ? `#${rank}` : '-'}</div>
+        <div className="col-span-4" role="gridcell">{player.name}</div>
+        <div className="col-span-1 text-center" role="gridcell">{player.stats?.kills ?? 0}</div>
+        <div className="col-span-1 text-center" role="gridcell">{player.stats?.deaths ?? 0}</div>
+        <div className="col-span-1 text-center" role="gridcell">{player.stats?.totalGamesPlayed ?? 0}</div>
+        <div className={`col-span-2 text-right ${ (player.stats?.netWinnings ?? 0) > 0 ? 'text-green' : 'text-subtext0'}`} role="gridcell">
+          {player.stats?.netWinnings ?? 0}
+        </div>
+        <div className="col-span-2 text-right" role="gridcell">{renderBidCell(player)}</div>
+      </div>
     );
   };
 
   if (!hasMounted) return null;
 
   return (
-   <div className="fixed inset-0 z-20 flex flex-col items-center justify-center bg-black/50 p-4 backdrop-blur-md">
-      {/* Processing Overlay */}
+   <div className="fixed inset-0 z-20 flex flex-col items-center justify-center bg-base p-4">
       {betStatus.isProcessing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
           <div className="border border-yellow-400 bg-black p-8 text-center">
@@ -227,62 +274,24 @@ export const Lobby = () => {
         </div>
       )}
 
-      <div className="flex w-full max-w-7xl flex-col border border-gray-600 bg-black/80">
-        <header className="flex items-center justify-between border-b border-gray-600 p-3">
-          <h1 className="font-title text-2xl tracking-[0.2em] text-white">POTSHOT.GG</h1>
+      <div className="flex w-full max-w-7xl flex-col border border-overlay2 bg-crust">
+        <header className="flex items-center justify-between border-b border-overlay2 p-3">
+          <AsciiTitle />
           {lobbyCountdown !== null && (
-            <div className="font-title text-3xl text-yellow-400">
+            <div className="font-title text-3xl text-yellow">
               {lobbyCountdown > 0 ? `T-${lobbyCountdown.toString().padStart(2, "0")}` : "FINALIZING..."}
             </div>
           )}
         </header>
 
-        <div className="flex items-center justify-end p-2 h-10" />
-
         <main className="flex flex-col gap-4 p-4">
           {connected ? (
             <>
-              <div>
-                  <h3 className="mb-2 text-lg font-semibold text-red-500">{'// NEXT MATCH: FIGHTERS [TOP 4 BIDS]'}</h3>
-                  <table className="w-full border-collapse">
-                      <thead>
-                          <tr className="border-b border-gray-700 text-left text-xs text-gray-400">
-                              <th className="p-2 w-16 text-center">RANK</th>
-                              <th className="p-2">NAME</th>
-                              <th className="p-2 w-20 text-center">KILLS</th>
-                              <th className="p-2 w-20 text-center">DEATHS</th>
-                              <th className="p-2 w-20 text-center">ROUNDS</th>
-                              <th className="p-2 w-40 text-right">NET GAIN</th>
-                              <th className="p-2 w-64 text-right">CURRENT BID</th>
-                          </tr>
-                      </thead>
-                      <tbody>
-                          {fighters.map(p => <PlayerRow key={p.id} player={p} />)}
-                      </tbody>
-                  </table>
-              </div>
-              <div>
-                  <h3 className="mb-2 text-lg font-semibold text-blue-400">{'// AUCTION IN PROGRESS: CONTENDERS'}</h3>
-                   <table className="w-full border-collapse">
-                       <thead>
-                          <tr className="border-b border-gray-700 text-left text-xs text-gray-400">
-                              <th className="p-2 w-16 text-center">RANK</th>
-                              <th className="p-2">NAME</th>
-                              <th className="p-2 w-20 text-center">KILLS</th>
-                              <th className="p-2 w-20 text-center">DEATHS</th>
-                              <th className="p-2 w-20 text-center">ROUNDS</th>
-                              <th className="p-2 w-40 text-right">NET GAIN</th>
-                              <th className="p-2 w-64 text-right">CURRENT BID</th>
-                          </tr>
-                      </thead>
-                      <tbody>
-                          {contenders.map(p => <PlayerRow key={p.id} player={p} />)}
-                      </tbody>
-                  </table>
-              </div>
+              <PlayerTable players={fighters} title="// NEXT MATCH: FIGHTERS [TOP 4 BIDS]" color="text-red" />
+              <PlayerTable players={contenders} title="// AUCTION IN PROGRESS: CONTENDERS" color="text-teal" />
             </>
           ) : (
-            <div className="h-64 flex items-center justify-center text-gray-500">
+            <div className="h-64 flex items-center justify-center text-subtext0">
                 <p>Connect your wallet to participate in the auction.</p>
             </div>
           )}
