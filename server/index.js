@@ -52,8 +52,6 @@ try {
 let gamePhase = "LOBBY";
 let lobbyCountdown = null;
 let lobbyCountdownIntervalId = null;
-let roundTimer = null;
-let roundTimerIntervalId = null;
 let activeFighterIds = new Set();
 let roundPot = 0;
 
@@ -715,10 +713,6 @@ const checkAndManageCountdown = (previousTopFighterIds = []) => {
 // EXISTING: endRound (unchanged)
 // ============================================
 const endRound = async (winner, isSplitPot = false) => {
-    if (roundTimerIntervalId) clearInterval(roundTimerIntervalId);
-    roundTimerIntervalId = null;
-    roundTimer = null;
-
     gamePhase = "POST_ROUND";
     const roundId = `round_${Date.now()}`;
     console.log(`Entering POST_ROUND. Round ID: ${roundId}`);
