@@ -10,11 +10,6 @@ import "dotenv/config";
 import { Connection, clusterApiUrl, PublicKey, SystemProgram, Transaction, Keypair } from "@solana/web3.js";
 import bs58 from "bs58";
 import {
-  updatePlayerHitbox,
-  removePlayerHitbox,
-  performRaycast,
-} from "./physics.js";
-import {
   getPlayerStats,
   updatePlayerStats,
   incrementPlayerStat,
