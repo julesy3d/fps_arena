@@ -1,46 +1,45 @@
 @import "@solana/wallet-adapter-react-ui/styles.css";
 @import "tailwindcss";
-
-:root {
-  --background: #0a0a0a;
-  --foreground: #ededed;
-  /* CHANGED: New font families defined here */
-  --font-body: Arial, sans-serif;
-  --font-title: "rixvideogame-pro", sans-serif;
-}
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital@0;1&display=swap');
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-body); /* Apply Arial globally */
-  overflow: hidden; /* Prevent scrollbars */
+  font-family: 'IBM Plex Mono', monospace;
+  background-color: #eff1f5; /* base */
+  color: #4c4f69; /* text */
+  overflow: hidden;
 }
 
-/* Utility class for the new title font */
-.font-title {
-    font-family: var(--font-title);
-    font-weight: 400;
-    font-style: normal;
+/* Blinking cursor animation */
+@keyframes blink {
+  50% {
+    border-color: transparent;
+  }
 }
 
-.crosshair {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 24px;
-  color: white;
-  pointer-events: none;
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
-  z-index: 10;
+.blinking-cursor {
+  animation: blink 1s step-start infinite;
 }
 
-/* --- STYLES FOR WALLET & UI BUTTONS --- */
+/* Typing animation */
+@keyframes typing {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+.typing-effect {
+  overflow: hidden;
+  white-space: nowrap;
+  animation: typing 2s steps(40, end);
+}
 
 .wallet-button-container .wallet-adapter-button-trigger {
   background-color: #111827 !important;
   border: 1px solid #4b5563;
-  font-family: var(--font-body);
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 0.875rem;
   line-height: 1.25rem;
   padding: 0.5rem 1rem;
@@ -52,4 +51,3 @@ body {
   background-color: #1f2937 !important;
   opacity: 0.8;
 }
-
