@@ -83,12 +83,13 @@ export default function Home() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Tab") {
         e.preventDefault();
-        if (connected) { setLobbyVisible((prev) => !prev); }
+        // Now it will toggle the lobby for everyone
+        setLobbyVisible((prev) => !prev);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [connected]);
+  }, []);
 
   return (
     // This <main> tag is the PERSISTENT SHELL. It and its direct children are never unmounted.
@@ -153,7 +154,7 @@ export default function Home() {
           CONNECTING TO SERVER...
         </div>
       ) : (
-        isDueling ? <DuelUI /> : (isLobbyVisible && connected && <Lobby />)
+        isDueling ? <DuelUI /> : (isLobbyVisible && <Lobby />)
       )}
       
       {roundWinner && gamePhase === "POST_ROUND" && (

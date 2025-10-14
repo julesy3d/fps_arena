@@ -285,16 +285,15 @@ export const Lobby = () => {
         </header>
 
         <main className="flex flex-col gap-4 p-4">
-          {connected ? (
             <>
               <PlayerTable players={fighters} title="// NEXT MATCH: FIGHTERS [TOP 4 BIDS]" color="text-red" />
               <PlayerTable players={contenders} title="// AUCTION IN PROGRESS: CONTENDERS" color="text-teal" />
             </>
-          ) : (
-            <div className="h-64 flex items-center justify-center text-subtext0">
-                <p>Connect your wallet to participate in the auction.</p>
-            </div>
-          )}
+            {!connected && (
+                <div className="text-center text-subtext0 mt-4">
+                    <p>Connect your wallet to participate in the auction.</p>
+                </div>
+            )}
         </main>
       </div>
     </div>
