@@ -24,36 +24,50 @@ export const TitleOverlay = ({ onHover }: TitleOverlayProps) => {
         onMouseEnter={() => onHover(true)}
         onMouseLeave={() => onHover(false)}
       >
-        <h1 className="cursor-pointer font-title text-6xl font-medium tracking-[0.4em] text-white transition-opacity duration-300 group-hover:opacity-0">
-          POTSHOT.GG
-        </h1>
+        {/* ASCII Title */}
+        <div className="cursor-pointer transition-opacity duration-300 group-hover:opacity-0">
+          <pre className="text-center text-rosewater text-[10px] leading-tight">
+{`
+ ███████████     █████     █████       ███     █████         █████    ███████████      █████████    █████████ 
+░░███░░░░░███  ███░░░███  ░░███       ██████  ░░███        ███░░░███ ░█░░░███░░░█     ███░░░░░███  ███░░░░░███
+ ░███    ░███ ███   ░░███ ███████    ███░░░    ░███████   ███   ░░███░   ░███  ░     ███     ░░░  ███     ░░░ 
+ ░██████████ ░███    ░███░░░███░    ░░█████    ░███░░███ ░███    ░███    ░███       ░███         ░███         
+ ░███░░░░░░  ░███    ░███  ░███      ░░░░███   ░███ ░███ ░███    ░███    ░███       ░███    █████░███    █████
+ ░███        ░░███   ███   ░███ ███  ██████    ░███ ░███ ░░███   ███     ░███       ░░███  ░░███ ░░███  ░░███ 
+ █████        ░░░█████░    ░░█████  ░░░███     ████ █████ ░░░█████░      █████    ██ ░░█████████  ░░█████████ 
+░░░░░           ░░░░░░      ░░░░░     ░░░     ░░░░ ░░░░░    ░░░░░░      ░░░░░    ░░   ░░░░░░░░░    ░░░░░░░░░  
+`}
+          </pre>
+        </div>
 
-        <div className="pointer-events-none absolute top-2 left-1/2 w-[600px] -translate-x-1/2 opacity-0 transition-all duration-500 ease-in-out group-hover:pointer-events-auto group-hover:opacity-100">
-          
-          <div className="bg-black/80 p-6 backdrop-blur-sm border border-white/50">
-            
-            <h2 className="font-mono text-lg uppercase tracking-widest text-white">
-              Auction & Match Rules
+        {/* Hover Content */}
+        <div className="absolute top-0 left-0 w-full opacity-0 transition-opacity duration-300 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto">
+          <div className="bg-crust p-4 border-dashed-ascii">
+            <h2 className="text-lg uppercase tracking-widest text-yellow">
+              // Auction & Match Rules
             </h2>
+            
+            <div className="hr-dashed my-4" role="presentation" />
+            
+            <ul className="space-y-2 text-sm text-subtext0">
+              <li>{'>'} Token commitment is required for auction entry.</li>
+              <li>{'>'} Top 2 contributors are selected for the next duel.</li>
+              <li>{'>'} The sole survivor wins the entire pot.</li>
+              <li>{'>'} A 10% protocol fee is burned from winnings.</li>
+            </ul>
 
-            <div className="mt-4 border-t border-white/50 pt-4">
-                <ul className="space-y-2 font-mono text-sm text-gray-300">
-                    <li>- Token commitment is required for auction entry.</li>
-                    <li>- Top 4 contributors in the auction are selected for the match.</li>
-                    <li>- The sole survivor wins the entire pot.</li>
-                    <li>- A 10% protocol fee is burned from the winnings.</li>
-                </ul>
-            </div>
+            {!connected && mounted && (
+              <>
+                <div className="hr-dashed my-4" role="presentation" />
+                <div className="flex flex-col items-center">
+                  <p className="mb-2 text-xs uppercase text-subtext0">
+                    // Connect Wallet
+                  </p>
+                  <WalletMultiButton />
+                </div>
+              </>
+            )}
           </div>
-
-          {!connected && mounted && (
-            <div className="mt-4 flex flex-col items-center">
-              <p className="mb-2 font-mono text-xs uppercase text-white/70">
-                Connect Wallet
-              </p>
-              <WalletMultiButton />
-            </div>
-          )}
         </div>
       </div>
     </div>
