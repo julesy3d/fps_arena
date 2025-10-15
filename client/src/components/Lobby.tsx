@@ -5,13 +5,13 @@ import { useMemo, useState, useEffect } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { Transaction } from "@solana/web3.js";
 
-const BetControls = ({ 
-  onBet, 
+const BetControls = ({
+  onBet,
   onCancel,
   isProcessing,
-  statusMessage 
-}: { 
-  onBet: (amount: number) => void; 
+  statusMessage
+}: {
+  onBet: (amount: number) => void;
   onCancel: () => void;
   isProcessing: boolean;
   statusMessage: string;
@@ -33,48 +33,22 @@ const BetControls = ({
         className="w-24 bg-transparent text-center focus:outline-none blinking-cursor"
         disabled={isProcessing}
       />
-      <button 
-        onClick={handleBet} 
-        disabled={isProcessing} 
+      <button
+        onClick={handleBet}
+        disabled={isProcessing}
         className="text-green-400 opacity-75 hover:opacity-100 disabled:text-gray-500"
       >
         <span className="text-subtext0">[</span>BET<span className="text-subtext0">]</span>
       </button>
-      <button 
-        onClick={onCancel} 
-        disabled={isProcessing} 
+      <button
+        onClick={onCancel}
+        disabled={isProcessing}
         className="text-maroon opacity-75 hover:opacity-100 disabled:text-gray-500"
       >
         <span className="text-subtext0">[</span>CANCEL<span className="text-subtext0">]</span>
       </button>
     </div>
   );
-};
-
-const AsciiTitle = () => {
-    const title = `
-$$$$$$$\\             $$\\      $$$$$$\\  $$\\                  $$\\
-$$__$$\\          $$ |    $$__$$\\$$ |                $$ |
-$$| $$|$$$$$$\\ $$$$$$\   $$/  \\__|$$$$$$$\\  $$$$$$\\ $$$$$$\       $$$$$$\\   $$$$$$\\
-$$$$$$$|$$  __$$\\\\_$$  _|  \\$$$$$$\\$$  __$$\\ $$__$$\\\\_$$  _|   $$  __$$\\ $$  __$$\\
-$$____/$$ / $$|$$|     \\____$$\\$$| $$|$$/$$ | $$|      $$/ $$|$$/$$ |
-$$|     $$| $$|$$|$$\\   $$|$$|$$ |$$| $$|$$|$$\\   $$| $$|$$|$$ |
-$$|      \\$$$$$$ | \\$$$$  |\\$$$$$$  |$$ |$$ |\\$$$$$$  | \\$$$$  |$$\\$$$$$$$ |\\$$$$$$$ |
-\\__|       \\______/   \\____/  \\______/ \\__|  \\__| \\______/   \\____/ \\__|\____$$ | \\____$$ |
-                                                                        $$\\   $$|$$\\  $$ |
-                                                                        \\$$$$$$  |\\$$$$$$  |
-                                                                         \\______/  \\______/
-    `;
-    const colors = ['rosewater', 'flamingo', 'red', 'maroon', 'peach', 'yellow', 'green', 'teal'];
-    return (
-        <pre className="text-center">
-            {title.split('\\n').map((line, i) => (
-                <span key={i} style={{ color: `var(--color-${colors[i % colors.length]})` }}>
-                    {line}
-                </span>
-            ))}
-        </pre>
-    );
 };
 
 export const Lobby = () => {
@@ -235,9 +209,7 @@ export const Lobby = () => {
           <div className="col-span-2 text-right" role="columnheader">CURRENT BID</div>
         </div>
       </div>
-      <div className="text-overlay2" role="presentation">
-        {'─'.repeat(100)}
-      </div>
+      <div className="hr-dashed" role="presentation" />
       <div role="rowgroup">
         {players.map(p => <PlayerRow key={p.id} player={p} />)}
       </div>
@@ -253,7 +225,7 @@ export const Lobby = () => {
         <div className="col-span-1 text-center" role="gridcell">{player.stats?.kills ?? 0}</div>
         <div className="col-span-1 text-center" role="gridcell">{player.stats?.deaths ?? 0}</div>
         <div className="col-span-1 text-center" role="gridcell">{player.stats?.totalGamesPlayed ?? 0}</div>
-        <div className={`col-span-2 text-right ${ (player.stats?.netWinnings ?? 0) > 0 ? 'text-green' : 'text-subtext0'}`} role="gridcell">
+        <div className={`col-span-2 text-right ${(player.stats?.netWinnings ?? 0) > 0 ? 'text-green' : 'text-subtext0'}`} role="gridcell">
           {player.stats?.netWinnings ?? 0}
         </div>
         <div className="col-span-2 text-right" role="gridcell">{renderBidCell(player)}</div>
@@ -274,15 +246,15 @@ export const Lobby = () => {
         </div>
       )}
 
-      <div className="flex w-full max-w-7xl flex-col border border-overlay2 bg-crust">
-        <header className="flex items-center justify-between border-b border-overlay2 p-3">
-          <AsciiTitle />
+      <div className="flex w-full max-w-7xl flex-col bg-crust border-dashed-ascii">
+        <header className="flex items-center justify-between p-3">
           {lobbyCountdown !== null && (
             <div className="font-title text-3xl text-yellow">
               {lobbyCountdown > 0 ? `T-${lobbyCountdown.toString().padStart(2, "0")}` : "FINALIZING..."}
             </div>
           )}
         </header>
+        <div className="hr-dashed" role="presentation" />
 
         <main className="flex flex-col gap-4 p-4">
             <>
