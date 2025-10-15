@@ -1,9 +1,10 @@
 "use client";
 
 import { useThree } from "@react-three/fiber";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useGameStore } from "@/store/useGameStore";
 import { Fighter } from "./Fighter";
+import { FighterNameLabel } from "./FighterNameLabel";
 
 
 // ============================================
@@ -87,59 +88,98 @@ const DuelOverlay = ({ message, canClick, actionType }: { message: string; canCl
   );
 };
 
-// ============================================
-// 3D SCENE CONTENT (No changes)
-// ============================================
-const DuelSceneContent = ({ selfId, fighters }: { selfId: string, fighters: any[] }) => {
-
-    console.log('🎯 RENDERING SCENE WITH FIGHTERS:', 
-        fighters.map(f => ({ 
-            name: f.name, 
-            position: f.position,
-            rotation: f.rotation 
-        }))
-    );
+const DuelSceneContent = ({ fighters }: { fighters: any[] }) => {
+  // Force re-render when fighters change (for frameloop="demand")
+  const { invalidate } = useThree();
+  
+  useEffect(() => {
+    invalidate();
+  }, [fighters, invalidate]);
 
   return (
-      <>
-        {/* Minimal lighting to reduce background artifacts */}
-        <ambientLight intensity={0.4} />
-        <directionalLight position={[5, 10, 5]} intensity={1.2} />
-        <directionalLight position={[-5, 5, -5]} intensity={0.5} />
-        
-        {/* NO ground plane - prevents ASCII rendering large empty areas */}
-        
-        {fighters.map(fighter => (
+    <>
+      <ambientLight intensity={0.4} />
+      <directionalLight position={[5, 10, 5]} intensity={1.2} />
+      <directionalLight position={[-5, 5, -5]} intensity={0.5} />
+      
+      {fighters?.map(fighter => (
+        <group key={fighter.id}>
           <Fighter 
-            key={fighter.id} 
             position={fighter.position} 
             rotation={fighter.rotation} 
-            animationState={fighter.animationState}
+            animationState={fighter.animationState || 'idle'}
           />
-        ))}
-      </>
-    );
+          <FighterNameLabel 
+            name={fighter.name} 
+            position={fighter.position}
+          />
+        </group>
+      ))}
+    </>
+  );
 };
 
-
 // ============================================
-// NEW: The 3D content for the duel
-// This is what will be rendered inside the main Canvas in page.tsx
+// FIXED: Only emit playerReady when actually in duel
 // ============================================
 export const DuelStage3D = () => {
-  const socket = useGameStore((state) => state.socket);
-  const fighters = useGameStore((state) => state.fighters);
-  const selfId = useGameStore((state) => state.socket?.id || "");
+  const { socket, fighters, gamePhase, players } = useGameStore();
+  
+  // FIX #1: Show top 2 bidders in LOBBY, actual fighters in duel
+  const displayFighters = useMemo(() => {
+    if (gamePhase === "LOBBY") {
+      // Get top 2 bidders from players
+      const allPlayers = Object.values(players || {});
+      const topBidders = allPlayers
+        .filter(p => p.betAmount > 0)
+        .sort((a, b) => (b.betAmount ?? 0) - (a.betAmount ?? 0))
+        .slice(0, 2);
+      
+      console.log('🏛️ LOBBY staging:', {
+        totalPlayers: allPlayers.length,
+        playersWithBets: allPlayers.filter(p => p.betAmount > 0).length,
+        topBidders: topBidders.map(p => ({ name: p.name, bet: p.betAmount }))
+      });
+      
+      // Position them for staging
+      return topBidders.map((player, index) => ({
+        id: player.id,
+        name: player.name,
+        position: index === 0 ? [0, 0, -3] : [0, 0, 3] as [number, number, number],
+        rotation: index === 0 ? 0 : Math.PI,
+        animationState: 'idle' as const
+      }));
+    } else if (gamePhase === "IN_ROUND" || gamePhase === "POST_ROUND") {
+      // Use actual fighters from store during duel
+      // Ensure fighters array exists and has data
+      if (fighters && fighters.length > 0) {
+        return fighters;
+      }
+      // Fallback: if fighters not yet populated, return empty array
+      console.warn('⚠️ Fighters array empty during', gamePhase);
+      return [];
+    }
+    return [];
+  }, [gamePhase, players, fighters]);
 
-  // NEW: Tell the server we are ready once the 3D scene has mounted.
+  // FIX #2: Only emit playerReady when IN_ROUND phase starts
   useEffect(() => {
-    if (socket) {
-      console.log("🎬 3D Scene loaded, telling server we are ready.");
+    if (socket && gamePhase === "IN_ROUND") {
+      console.log("🎬 Duel phase started, telling server we are ready.");
       socket.emit("duel:playerReady");
     }
-  }, [socket]);
+  }, [socket, gamePhase]);
 
-  return <DuelSceneContent selfId={selfId} fighters={fighters} />;
+  // Debug: Log what we're displaying
+  useEffect(() => {
+    console.log('🎯 DuelStage3D state:', {
+      gamePhase,
+      displayFightersCount: displayFighters.length,
+      displayFighters: displayFighters.map(f => ({ id: f.id, name: f.name }))
+    });
+  }, [gamePhase, displayFighters]);
+
+  return <DuelSceneContent fighters={displayFighters} />;
 };
 
 
