@@ -5,10 +5,10 @@ import { useEffect, useState, useRef, useMemo } from "react";
 import { useGameStore } from "@/store/useGameStore";
 import { Fighter } from "./Fighter";
 import { FighterNameLabel } from "./FighterNameLabel";
-
+import { NarratorSequence } from "./NarratorSequence";
 
 // ============================================
-// AUDIO MANAGER (No changes)
+// AUDIO MANAGER
 // ============================================
 const useAudio = () => {
   const clickAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -41,16 +41,42 @@ const useAudio = () => {
 };
 
 // ============================================
-// SHOOTING BAR (No changes)
+// SHOOTING BAR - Visual timing indicator
 // ============================================
-const ShootingBar = ({ visible, barPosition, onTick, onHammer, onTock }: { visible: boolean; barPosition: number; onTick: () => void; onHammer: () => void; onTock: () => void; }) => {
+const ShootingBar = ({ 
+  visible, 
+  barPosition, 
+  onTick, 
+  onHammer, 
+  onTock 
+}: { 
+  visible: boolean; 
+  barPosition: number; 
+  onTick: () => void; 
+  onHammer: () => void; 
+  onTock: () => void; 
+}) => {
   const lastSoundRef = useRef<'none' | 'tick' | 'hammer' | 'tock'>('none');
   
   useEffect(() => {
-    if (!visible) { lastSoundRef.current = 'none'; return; }
-    if (barPosition >= 0 && barPosition < 0.05 && lastSoundRef.current !== 'tick') { onTick(); lastSoundRef.current = 'tick'; }
-    else if (barPosition >= 0.18 && barPosition < 0.22 && lastSoundRef.current !== 'hammer') { onHammer(); lastSoundRef.current = 'hammer'; }
-    else if (barPosition >= 0.68 && barPosition < 0.72 && lastSoundRef.current !== 'tock') { onTock(); lastSoundRef.current = 'tock'; }
+    if (!visible) { 
+      lastSoundRef.current = 'none'; 
+      return; 
+    }
+    
+    // Play sounds at specific bar positions
+    if (barPosition >= 0 && barPosition < 0.05 && lastSoundRef.current !== 'tick') { 
+      onTick(); 
+      lastSoundRef.current = 'tick'; 
+    }
+    else if (barPosition >= 0.18 && barPosition < 0.22 && lastSoundRef.current !== 'hammer') { 
+      onHammer(); 
+      lastSoundRef.current = 'hammer'; 
+    }
+    else if (barPosition >= 0.68 && barPosition < 0.72 && lastSoundRef.current !== 'tock') { 
+      onTock(); 
+      lastSoundRef.current = 'tock'; 
+    }
   }, [barPosition, visible, onTick, onHammer, onTock]);
   
   if (!visible) return null;
@@ -58,24 +84,55 @@ const ShootingBar = ({ visible, barPosition, onTick, onHammer, onTock }: { visib
   return (
     <div className="fixed bottom-8 right-8 z-20 flex flex-col items-center">
       <div className="relative h-64 w-12 bg-black/80 border-2 border-white">
-        <div className="absolute bottom-0 left-0 right-0 bg-green-900/40 border-t-2 border-b-2 border-green-500" style={{ height: '20%', bottom: '60%' }} />
-        <div className="absolute left-0 right-0 h-2 bg-red-500" style={{ bottom: `${barPosition * 100}%`, boxShadow: '0 0 10px rgba(255, 0, 0, 0.8)' }} />
-        {barPosition >= 0.68 && barPosition <= 0.72 && ( <div className="absolute left-0 right-0 text-center text-xs text-green-400 font-bold" style={{ bottom: '70%' }}>NOW!</div> )}
+        {/* Green target zone */}
+        <div 
+          className="absolute bottom-0 left-0 right-0 bg-green-900/40 border-t-2 border-b-2 border-green-500" 
+          style={{ height: '20%', bottom: '60%' }} 
+        />
+        {/* Moving red bar */}
+        <div 
+          className="absolute left-0 right-0 h-2 bg-red-500" 
+          style={{ 
+            bottom: `${barPosition * 100}%`, 
+            boxShadow: '0 0 10px rgba(255, 0, 0, 0.8)' 
+          }} 
+        />
+        {/* "NOW!" indicator when in perfect zone */}
+        {barPosition >= 0.68 && barPosition <= 0.72 && (
+          <div className="absolute left-0 right-0 text-center text-xs text-green-400 font-bold" style={{ bottom: '70%' }}>
+            NOW!
+          </div>
+        )}
       </div>
-      <div className="mt-2 text-sm text-white font-mono">{(barPosition * 100).toFixed(0)}%</div>
+      <div className="mt-2 text-sm text-white font-mono">
+        {(barPosition * 100).toFixed(0)}%
+      </div>
     </div>
   );
 };
 
 // ============================================
-// UI OVERLAY (No changes)
+// DUEL OVERLAY - Shows messages and prompts
 // ============================================
-const DuelOverlay = ({ message, canClick, actionType }: { message: string; canClick: boolean; actionType: 'draw' | 'shoot' | null; }) => {
+const DuelOverlay = ({ 
+  message, 
+  canClick, 
+  actionType 
+}: { 
+  message: string; 
+  canClick: boolean; 
+  actionType: 'draw' | 'shoot' | null; 
+}) => {
   return (
     <>
+      {/* Main message at top */}
       <div className="fixed top-1/4 left-1/2 -translate-x-1/2 z-10 text-center">
-        <h1 className="text-6xl font-bold text-white drop-shadow-[0_0_20px_rgba(0,0,0,0.9)]">{message}</h1>
+        <h1 className="text-6xl font-bold text-white drop-shadow-[0_0_20px_rgba(0,0,0,0.9)]">
+          {message}
+        </h1>
       </div>
+      
+      {/* Action prompt at bottom */}
       {canClick && actionType && (
         <div className="fixed bottom-1/4 left-1/2 -translate-x-1/2 z-10">
           <div className="text-2xl text-yellow-400 font-mono animate-pulse">
@@ -88,10 +145,13 @@ const DuelOverlay = ({ message, canClick, actionType }: { message: string; canCl
   );
 };
 
+// ============================================
+// 3D SCENE CONTENT - Renders fighters
+// ============================================
 const DuelSceneContent = ({ fighters }: { fighters: any[] }) => {
-  // Force re-render when fighters change (for frameloop="demand")
   const { invalidate } = useThree();
   
+  // Force re-render when fighters change
   useEffect(() => {
     invalidate();
   }, [fighters, invalidate]);
@@ -120,15 +180,15 @@ const DuelSceneContent = ({ fighters }: { fighters: any[] }) => {
 };
 
 // ============================================
-// FIXED: Only emit playerReady when actually in duel
+// DUEL STAGE 3D - Manages which fighters to show
 // ============================================
 export const DuelStage3D = () => {
   const { socket, fighters, gamePhase, players } = useGameStore();
   
-  // FIX #1: Show top 2 bidders in LOBBY, actual fighters in duel
+  // Determine which fighters to display based on game phase
   const displayFighters = useMemo(() => {
     if (gamePhase === "LOBBY") {
-      // Get top 2 bidders from players
+      // LOBBY: Show top 2 bidders as preview
       const allPlayers = Object.values(players || {});
       const topBidders = allPlayers
         .filter(p => p.betAmount > 0)
@@ -141,7 +201,7 @@ export const DuelStage3D = () => {
         topBidders: topBidders.map(p => ({ name: p.name, bet: p.betAmount }))
       });
       
-      // Position them for staging
+      // Position them facing each other
       return topBidders.map((player, index) => ({
         id: player.id,
         name: player.name,
@@ -149,20 +209,19 @@ export const DuelStage3D = () => {
         rotation: index === 0 ? 0 : Math.PI,
         animationState: 'idle' as const
       }));
-    } else if (gamePhase === "IN_ROUND" || gamePhase === "POST_ROUND") {
-      // Use actual fighters from store during duel
-      // Ensure fighters array exists and has data
+    } 
+    else if (gamePhase === "IN_ROUND" || gamePhase === "POST_ROUND") {
+      // IN_ROUND/POST_ROUND: Show actual fighters from store
       if (fighters && fighters.length > 0) {
         return fighters;
       }
-      // Fallback: if fighters not yet populated, return empty array
       console.warn('⚠️ Fighters array empty during', gamePhase);
       return [];
     }
     return [];
   }, [gamePhase, players, fighters]);
 
-  // FIX #2: Only emit playerReady when IN_ROUND phase starts
+  // Tell server we're ready when IN_ROUND starts
   useEffect(() => {
     if (socket && gamePhase === "IN_ROUND") {
       console.log("🎬 Duel phase started, telling server we are ready.");
@@ -170,7 +229,7 @@ export const DuelStage3D = () => {
     }
   }, [socket, gamePhase]);
 
-  // Debug: Log what we're displaying
+  // Debug logging
   useEffect(() => {
     console.log('🎯 DuelStage3D state:', {
       gamePhase,
@@ -182,15 +241,17 @@ export const DuelStage3D = () => {
   return <DuelSceneContent fighters={displayFighters} />;
 };
 
-
 // ============================================
-// REFACTORED: The main component is now just the UI and logic
+// DUEL UI - Main duel interface logic
+// This handles all the UI, socket events, and user interactions
 // ============================================
 export const DuelUI = () => {
-  const { socket, fighters } = useGameStore();
+  // Get store data - ADDED gamePhase here (was missing!)
+  const { socket, fighters, gamePhase } = useGameStore();
   const selfId = socket?.id || "";
   const { playClick, playClack, playHammer, playShoot, playGong } = useAudio();
 
+  // UI State
   const [isWaitingForOpponent, setIsWaitingForOpponent] = useState(true);
   const [message, setMessage] = useState<string>("");
   const [canClick, setCanClick] = useState<boolean>(false);
@@ -200,11 +261,23 @@ export const DuelUI = () => {
   const hasShotThisRound = useRef(false);
   const [isAIMode, setIsAIMode] = useState(false);
 
-  // FIXED: Consolidated both useEffect hooks into one to resolve the scope issue.
+  // Narrator State
+  const [showNarrator, setShowNarrator] = useState(false);
+  const [narratorComplete, setNarratorComplete] = useState(false);
+
+  // Reset narrator when returning to lobby
+  useEffect(() => {
+    if (gamePhase === "LOBBY") {
+      setShowNarrator(false);
+      setNarratorComplete(false);
+    }
+  }, [gamePhase]);
+  
+  // Socket event handlers
   useEffect(() => {
     if (!socket) return;
 
-    // --- AI Mode Key Listener ---
+    // === AI MODE ACTIVATION ===
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() === 'a' && !isAIMode) {
         console.log("🤖 Requesting AI opponent...");
@@ -214,78 +287,113 @@ export const DuelUI = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
 
-    // --- Socket Event Handlers ---
+    // === SOCKET EVENT HANDLERS ===
+    
+    // Both players ready → Start narrator sequence
     const onBothReady = () => {
-      console.log("🤝 Both players are ready. Starting cinematic.");
+      console.log("🤝 Both players are ready. Starting narrator sequence.");
       setIsWaitingForOpponent(false);
-      setMessage("HIGH NOON APPROACHES...");
+      setShowNarrator(true);
     };
 
-    const onDuelState = () => { setMessage("HIGH NOON APPROACHES..."); setCanClick(false); setActionType(null); setBarVisible(false); };
-    //const onGong = () => { playGong(); setMessage("DRAW!"); setCanClick(true); setActionType('draw'); setBarVisible(false); };
-    //const onDrawSuccess = () => { setMessage("WAITING FOR OPPONENT..."); setCanClick(false); setActionType(null); };
-    //const onAimPhase = () => { setMessage("AIM!"); setCanClick(true); setActionType('shoot'); setBarVisible(true); };
-    const onBarUpdate = ({ position }: { position: number }) => setBarPosition(position);
-    //const onBothHit = () => { setMessage("DODGE!"); setCanClick(false); setActionType(null); };
-    const onBothMiss = () => { setMessage("BOTH MISSED!"); setCanClick(false); setActionType(null); };
-    const onNewRound = ({ message: serverMessage }: { message: string }) => { setMessage(serverMessage); setCanClick(true); setActionType('shoot'); setBarVisible(true); hasShotThisRound.current = false; };
-    const onBothFailedDraw = () => { setMessage("BOTH FAILED - PICK UP GUNS!"); setCanClick(true); setActionType('draw'); setBarVisible(false); };
-    //const onShot = ({ shooterId, hit }: { shooterId: string, hit: boolean }) => { if (shooterId === selfId && hit) { playShoot(); } };
-    //const onOpponentDrew = () => console.log(`👁️ Opponent drew weapon`);
+    // Duel state update
+    const onDuelState = () => { 
+      setMessage("HIGH NOON APPROACHES..."); 
+      setCanClick(false); 
+      setActionType(null); 
+      setBarVisible(false); 
+    };
     
+    // GONG! → Hide narrator, start draw phase
     const onGong = () => { 
-      playGong(); 
+      playGong();
+      
+      // Hide narrator if still showing
+      setShowNarrator(false);
+      setNarratorComplete(true);
+      
       setMessage("DRAW!"); 
       setCanClick(true); 
       setActionType('draw'); 
       setBarVisible(false); 
     };
 
+    // You drew successfully → Wait for opponent
     const onDrawSuccess = () => { 
       setMessage("WAITING FOR OPPONENT..."); 
       setCanClick(false); 
       setActionType(null);
-      useGameStore.getState().updateFighterAnimation(selfId, 'armed'); // Changed from 'draw'
+      useGameStore.getState().updateFighterAnimation(selfId, 'armed');
     };
 
+    // Opponent drew their weapon
     const onOpponentDrew = ({ playerId }: { playerId: string }) => {
-      useGameStore.getState().updateFighterAnimation(playerId, 'armed'); // Changed from 'draw'
+      useGameStore.getState().updateFighterAnimation(playerId, 'armed');
     };
 
+    // Both drew → Start aiming phase
     const onAimPhase = () => { 
       setMessage("AIM!"); 
       setCanClick(true); 
       setActionType('shoot'); 
       setBarVisible(true);
       fighters.forEach(f => {
-        useGameStore.getState().updateFighterAnimation(f.id, 'armed'); // Changed from 'aiming'
+        useGameStore.getState().updateFighterAnimation(f.id, 'armed');
       });
     };
 
+    // Bar position update (60fps from server)
+    const onBarUpdate = ({ position }: { position: number }) => {
+      setBarPosition(position);
+    };
+
+    // Someone shot
     const onShot = ({ shooterId, hit }: { shooterId: string, hit: boolean }) => { 
       if (shooterId === selfId && hit) { 
         playShoot(); 
       }
-      
-      // NEW: Trigger shooting animation
       useGameStore.getState().updateFighterAnimation(shooterId, 'shooting');
     };
 
+    // Both hit → Dodge!
     const onBothHit = () => { 
       setMessage("DODGE!"); 
       setCanClick(false); 
       setActionType(null);
-      
-      // NEW: Both dodge
       fighters.forEach(f => {
         useGameStore.getState().updateFighterAnimation(f.id, 'dodging');
       });
     };
 
+    // Both missed → Try again
+    const onBothMiss = () => { 
+      setMessage("BOTH MISSED!"); 
+      setCanClick(false); 
+      setActionType(null); 
+    };
+
+    // New round (after both miss or dodge)
+    const onNewRound = ({ message: serverMessage }: { message: string }) => { 
+      setMessage(serverMessage); 
+      setCanClick(true); 
+      setActionType('shoot'); 
+      setBarVisible(true); 
+      hasShotThisRound.current = false; 
+    };
+
+    // Both failed to draw → Pick up guns again
+    const onBothFailedDraw = () => { 
+      setMessage("BOTH FAILED - PICK UP GUNS!"); 
+      setCanClick(true); 
+      setActionType('draw'); 
+      setBarVisible(false); 
+    };
+
+    // Game phase changed (used for POST_ROUND animations)
     const onGamePhaseChange = ({ phase, winnerData }: any) => {
       if (phase === "POST_ROUND" && winnerData) {
         if (winnerData.isSplit) {
-          // Both players show defeat (sad)
+          // Draw → Both look defeated
           fighters.forEach(f => {
             useGameStore.getState().updateFighterAnimation(f.id, 'defeat');
           });
@@ -307,74 +415,98 @@ export const DuelUI = () => {
         setBarVisible(false);
       }
     };
-
         
-        // Register all listeners
-        socket.on("duel:bothReady", onBothReady);
-        socket.on("duel:state", onDuelState);
-        socket.on("duel:gong", onGong);
-        socket.on("duel:drawSuccess", onDrawSuccess);
-        socket.on("duel:aimPhase", onAimPhase);
-        socket.on("duel:barUpdate", onBarUpdate);
-        socket.on("duel:bothHit", onBothHit);
-        socket.on("duel:bothMiss", onBothMiss);
-        socket.on("duel:newRound", onNewRound);
-        socket.on("duel:bothFailedDraw", onBothFailedDraw);
-        socket.on("duel:shot", onShot);
-        socket.on("duel:opponentDrew", onOpponentDrew);
-        socket.on("game:phaseChange", onGamePhaseChange);
-        
-        // Cleanup function
-        return () => {
-          window.removeEventListener('keydown', handleKeyDown);
-          socket.off("duel:bothReady", onBothReady);
-          socket.off("duel:state", onDuelState);
-          socket.off("duel:gong", onGong);
-          socket.off("duel:drawSuccess", onDrawSuccess);
-          socket.off("duel:aimPhase", onAimPhase);
-          socket.off("duel:barUpdate", onBarUpdate);
-          socket.off("duel:bothHit", onBothHit);
-          socket.off("duel:bothMiss", onBothMiss);
-          socket.off("duel:newRound", onNewRound);
-          socket.off("duel:bothFailedDraw", onBothFailedDraw);
-          socket.off("duel:shot", onShot);
-          socket.off("duel:opponentDrew", onOpponentDrew);
-          socket.off("game:phaseChange", onGamePhaseChange);
-        };
-      }, [socket, selfId, playGong, fighters, isAIMode]); // Added isAIMode to dependency array
-      
-      const handleClick = () => {
-        if (!canClick || !socket || !actionType) return;
-        if (actionType === 'shoot' && hasShotThisRound.current) return;
-        
-        if (actionType === 'draw') {
-            socket.emit("duel:draw");
-            setCanClick(false);
-        } else if (actionType === 'shoot') {
-            console.log(`CLIENT CLICK: Shooting at bar position ${barPosition.toFixed(2)}`);
-            socket.emit("duel:shoot");
-            hasShotThisRound.current = true;
-            setCanClick(false);
-        }
-      };
+    // Register all listeners
+    socket.on("duel:bothReady", onBothReady);
+    socket.on("duel:state", onDuelState);
+    socket.on("duel:gong", onGong);
+    socket.on("duel:drawSuccess", onDrawSuccess);
+    socket.on("duel:aimPhase", onAimPhase);
+    socket.on("duel:barUpdate", onBarUpdate);
+    socket.on("duel:bothHit", onBothHit);
+    socket.on("duel:bothMiss", onBothMiss);
+    socket.on("duel:newRound", onNewRound);
+    socket.on("duel:bothFailedDraw", onBothFailedDraw);
+    socket.on("duel:shot", onShot);
+    socket.on("duel:opponentDrew", onOpponentDrew);
+    socket.on("game:phaseChange", onGamePhaseChange);
+    
+    // Cleanup function
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      socket.off("duel:bothReady", onBothReady);
+      socket.off("duel:state", onDuelState);
+      socket.off("duel:gong", onGong);
+      socket.off("duel:drawSuccess", onDrawSuccess);
+      socket.off("duel:aimPhase", onAimPhase);
+      socket.off("duel:barUpdate", onBarUpdate);
+      socket.off("duel:bothHit", onBothHit);
+      socket.off("duel:bothMiss", onBothMiss);
+      socket.off("duel:newRound", onNewRound);
+      socket.off("duel:bothFailedDraw", onBothFailedDraw);
+      socket.off("duel:shot", onShot);
+      socket.off("duel:opponentDrew", onOpponentDrew);
+      socket.off("game:phaseChange", onGamePhaseChange);
+    };
+  }, [socket, selfId, playGong, fighters, isAIMode]);
+  
+  // Handle user clicks (draw or shoot)
+  const handleClick = () => {
+    if (!canClick || !socket || !actionType) return;
+    if (actionType === 'shoot' && hasShotThisRound.current) return;
+    
+    if (actionType === 'draw') {
+      socket.emit("duel:draw");
+      setCanClick(false);
+    } else if (actionType === 'shoot') {
+      console.log(`CLIENT CLICK: Shooting at bar position ${barPosition.toFixed(2)}`);
+      socket.emit("duel:shoot");
+      hasShotThisRound.current = true;
+      setCanClick(false);
+    }
+  };
   
   return (
     <div className="absolute inset-0 cursor-crosshair" onClick={handleClick}>
-        {isWaitingForOpponent && (
-         <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/50">
-           <h1 className="text-3xl font-bold text-white animate-pulse">
-             WAITING FOR OPPONENT...
-           </h1>
-         </div>
-         )}   
+      {/* === NARRATOR SEQUENCE === */}
+      {showNarrator && !narratorComplete && (
+        <NarratorSequence
+          onComplete={() => {
+            console.log("🎬 Narrator sequence complete");
+            setNarratorComplete(true);
+            setShowNarrator(false);
+            setMessage("HIGH NOON APPROACHES...");
+          }}
+        />
+      )}
 
-        {isAIMode && (
-            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-20 bg-red-600 text-white font-bold px-3 py-1 text-sm">
-            AI OPPONENT ACTIVE
-            </div>
-        )}
+      {/* === WAITING FOR OPPONENT === */}
+      {isWaitingForOpponent && (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/50">
+          <h1 className="text-3xl font-bold text-white animate-pulse">
+            WAITING FOR OPPONENT...
+          </h1>
+        </div>
+      )} 
+
+      {/* === AI MODE INDICATOR === */}
+      {isAIMode && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-20 bg-red-600 text-white font-bold px-3 py-1 text-sm">
+          AI OPPONENT ACTIVE
+        </div>
+      )}
+      
+      {/* === DUEL MESSAGES & PROMPTS === */}
       <DuelOverlay message={message} canClick={canClick} actionType={actionType} />
-      <ShootingBar visible={barVisible} barPosition={barPosition} onTick={playClick} onTock={playClack} onHammer={playHammer} />
+      
+      {/* === SHOOTING TIMING BAR === */}
+      <ShootingBar 
+        visible={barVisible} 
+        barPosition={barPosition} 
+        onTick={playClick} 
+        onTock={playClack} 
+        onHammer={playHammer} 
+      />
     </div>
   );
 };
