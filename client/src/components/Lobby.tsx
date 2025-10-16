@@ -5,6 +5,7 @@ import { useMemo, useState, useEffect } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { Transaction } from "@solana/web3.js";
 
+
 const BetControls = ({
   onBet,
   onCancel,
@@ -52,7 +53,7 @@ const BetControls = ({
 };
 
 export const Lobby = () => {
-  const { socket, players, lobbyCountdown } = useGameStore();
+  const { socket, players, lobbyCountdown, gamePhase } = useGameStore();
   const { connected, publicKey, signTransaction } = useWallet();
   const { connection } = useConnection();
   const selfId = socket?.id || null;
@@ -236,8 +237,7 @@ export const Lobby = () => {
   if (!hasMounted) return null;
 
   return (
-   <div className="fixed inset-0 z-20 flex flex-col items-center justify-center bg-base p-4">
-      {betStatus.isProcessing && (
+    <div className="fixed inset-0 z-20 flex flex-col items-center justify-end pb-16 bg-base p-4">      {betStatus.isProcessing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
           <div className="border border-yellow-400 bg-black p-8 text-center">
             <div className="mb-4 text-xl text-yellow-400">{betStatus.message}</div>
@@ -248,11 +248,19 @@ export const Lobby = () => {
 
       <div className="flex w-full max-w-7xl flex-col bg-crust border-dashed-ascii">
         <header className="flex items-center justify-between p-3">
-          {lobbyCountdown !== null && (
+          {lobbyCountdown !== null ? (
             <div className="font-title text-3xl text-yellow">
               {lobbyCountdown > 0 ? `T-${lobbyCountdown.toString().padStart(2, "0")}` : "FINALIZING..."}
             </div>
-          )}
+          ) : gamePhase === "IN_ROUND" ? (
+            <div className="font-title text-2xl text-red">
+              // DUEL IN PROGRESS - PLACE BETS FOR NEXT ROUND
+            </div>
+          ) : gamePhase === "POST_ROUND" ? (
+            <div className="font-title text-2xl text-green">
+              // ROUND COMPLETE - NEXT DUEL SOON
+            </div>
+          ) : null}
         </header>
         <div className="hr-dashed" role="presentation" />
 

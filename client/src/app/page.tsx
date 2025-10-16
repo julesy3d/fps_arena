@@ -76,23 +76,38 @@ export default function Home() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Tab") {
         e.preventDefault();
+        
+        // Fighters: Block lobby during IN_ROUND (but allow in POST_ROUND to see results)
+        if (gamePhase === "IN_ROUND" && isFighter) {
+          console.log("🚫 Lobby locked during combat (you're fighting!)");
+          return;
+        }
+        
+        // Spectators: Always allow
         setLobbyVisible((prev) => !prev);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [gamePhase, isFighter]); // Added dependencies
+
+  useEffect(() => {
+    if (gamePhase === "IN_ROUND" && isFighter && isLobbyVisible) {
+      console.log("🔒 Auto-closing lobby - you're in combat!");
+      setLobbyVisible(false);
+    }
+  }, [gamePhase, isFighter, isLobbyVisible]);
 
   return (
     <main className="font-body">
       <StreamPlaceholder isBlurred={isStreamBlurred} />
 
       {/* PERSISTENT 3D CANVAS - Always rendered */}
-      <div className="fixed inset-0 z-[-1]">
+      <div className="fixed inset-0 top-[-10%] z-[-1]">
         <Suspense fallback={<Loader />}>
           <Canvas
             camera={{ fov: 75, position: [-10, 2, 0] }}
-            frameloop="demand"
+            frameloop="always"
             gl={{
               powerPreference: "high-performance",
               antialias: false,
@@ -130,7 +145,8 @@ export default function Home() {
       {/* Lobby Toggle */}
       <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-40">
         {connected ? (
-          // Only show toggle if not a fighter during active duel
+          // Fighters: Hide toggle during combat (IN_ROUND only, allow in POST_ROUND)
+          // Spectators: Always show toggle
           !(gamePhase === "IN_ROUND" && isFighter) && (
             <button
               onClick={() => setLobbyVisible((prev) => !prev)}

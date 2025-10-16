@@ -1,25 +1,35 @@
 import { useRef, useEffect } from "react";
-import { useThree } from "@react-three/fiber";
+import { useThree, useFrame } from "@react-three/fiber";
 import { useGameStore } from "@/store/useGameStore";
 import { DuelStage3D } from "./DuelScene";
 import * as THREE from "three";
 
-
 export const Scene3D = () => {
-  const { camera } = useThree();
+  const { camera, gl, scene } = useThree();
   const { gamePhase, socket, fighters } = useGameStore();
-  const targetPosition = useRef(new THREE.Vector3());
+  
+  const targetPosition = useRef(new THREE.Vector3(-10, 2, 0));
   const targetLookAt = useRef(new THREE.Vector3(0, 1, 0));
-  const isTransitioning = useRef(false);
-
+  const isAnimating = useRef(false);
+  const frameCount = useRef(0);
+  
+  // 18 FPS throttle for retro aesthetic
+  const TARGET_FPS = 18;
+  const FRAME_SKIP = Math.round(60 / TARGET_FPS); // = 3 frames
+  
   const isFighter = fighters?.some((f) => f.id === socket?.id) ?? false;
 
+  // Debug logging
   useEffect(() => {
-    console.log('🎬 Scene3D - gamePhase changed:', gamePhase, 'isFighter:', isFighter);
-  }, [gamePhase, isFighter]);
+    console.log('🎮 Camera state change:', {
+      gamePhase,
+      isFighter,
+      currentCameraPos: camera.position.toArray(),
+      targetPos: targetPosition.current.toArray()
+    });
+  }, [gamePhase, isFighter, camera]);
 
-
-  // Camera positioning logic
+  // Update target position when game state changes
   useEffect(() => {
     let newPosition: THREE.Vector3;
 
@@ -33,34 +43,45 @@ export const Scene3D = () => {
       return;
     }
 
+    console.log('🎯 New target position:', newPosition.toArray());
     targetPosition.current.copy(newPosition);
-    isTransitioning.current = true;
+    isAnimating.current = true;
   }, [gamePhase, isFighter]);
 
-  // Smooth camera transition
-  const { invalidate } = useThree();
-  
-  useEffect(() => {
-    if (!isTransitioning.current) return;
-
-    const animate = () => {
+  // Manual render loop at 18fps with camera animation
+  useFrame(() => {
+    frameCount.current++;
+    
+    // Only render every 3rd frame (18fps)
+    if (frameCount.current % FRAME_SKIP !== 0) return;
+    
+    // Camera animation (still smooth interpolation, just rendered at 18fps)
+    if (isAnimating.current) {
       const distance = camera.position.distanceTo(targetPosition.current);
       
       if (distance > 0.01) {
-        camera.position.lerp(targetPosition.current, 0.05);
+        camera.position.lerp(targetPosition.current, 0.15); // Snappy movement
         camera.lookAt(targetLookAt.current);
-        invalidate();
-        requestAnimationFrame(animate);
+        
+        if (frameCount.current % (FRAME_SKIP * 10) === 0) {
+          console.log('📹 Camera animating:', {
+            current: camera.position.toArray(),
+            target: targetPosition.current.toArray(),
+            distance: distance.toFixed(3)
+          });
+        }
       } else {
+        // Animation complete
         camera.position.copy(targetPosition.current);
         camera.lookAt(targetLookAt.current);
-        isTransitioning.current = false;
-        invalidate();
+        isAnimating.current = false;
+        console.log('✅ Camera arrived at target');
       }
-    };
-
-    animate();
-  }, [camera, invalidate]);
+    }
+    
+    // Manual render at 18fps
+    gl.render(scene, camera);
+  }, 1); // renderPriority = 1 takes over rendering
 
   return <DuelStage3D />;
 };
