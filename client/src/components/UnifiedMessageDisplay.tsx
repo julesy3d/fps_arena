@@ -11,10 +11,11 @@ interface Message {
 
 const NARRATOR_MESSAGES: Message[] = [
   { text: "well, well, well...", duration: 2000 },
-  { text: "looks like we got ourselves a situation.", duration: 2500 },
-  { text: "at high noon, you will both draw your guns.", duration: 2200 },
-  { text: "one dies, one gets rich.", duration: 2800 },
-  { text: "HIGH NOON APPROACHES.", duration: 0, dramatic: true },
+  { text: "looks like we got ourselves a situation.", duration: 4000 },
+  { text: "at high noon, you will both draw your guns.", duration: 5000 },
+  { text: "one dies,", duration: 4000 },
+  { text: "one gets rich.", duration: 5000 },
+  { text: "HIGH NOON APPROACHES.", duration: 0, dramatic: true }, // Stays until GONG
 ];
 
 export const UnifiedMessageDisplay = () => {
