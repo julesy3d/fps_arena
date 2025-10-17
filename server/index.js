@@ -159,8 +159,8 @@ const startDuel = () => {
     }))
   });
   
-  // Random delay before GONG (5-8 seconds)
-  const gongDelay = 5000 + Math.random() * 3000;
+  // Random delay before GONG (12-15 seconds)
+  const gongDelay = 12000 + Math.random() * 3000;
   console.log(`⏳ GONG in ${(gongDelay / 1000).toFixed(1)}s`);
   
 };
