@@ -26,20 +26,37 @@ export const UnifiedMessageDisplay = () => {
   // Narrator state
   const [narratorIndex, setNarratorIndex] = useState(0);
   const [showingNarrator, setShowingNarrator] = useState(false);
-  const narratorHasPlayed = useRef(false); // Track if narrator played this duel
+  const narratorHasPlayed = useRef(false);
 
-  // Duel message state
-  const [duelMessage, setDuelMessage] = useState<string>("");
-  const [currentRound, setCurrentRound] = useState<number>(1);
+  // Track ALL active timers so we can clear them immediately
+  const activeTimers = useRef<NodeJS.Timeout[]>([]);
 
-  // Reset narrator flag when returning to LOBBY
+  // Helper function to clear ALL pending timers
+  const clearAllTimers = () => {
+    activeTimers.current.forEach(timer => clearTimeout(timer));
+    activeTimers.current = [];
+  };
+
+  // Helper function to add a timer that will be tracked
+  const addTimer = (callback: () => void, delay: number) => {
+    const timer = setTimeout(() => {
+      callback();
+      // Remove this timer from tracking once it fires
+      activeTimers.current = activeTimers.current.filter(t => t !== timer);
+    }, delay);
+    activeTimers.current.push(timer);
+    return timer;
+  };
+
+  // Reset everything when returning to LOBBY
   useEffect(() => {
     if (gamePhase === "LOBBY") {
+      clearAllTimers();
       narratorHasPlayed.current = false;
       setShowingNarrator(false);
       setNarratorIndex(0);
-      setDuelMessage("");
-      setCurrentRound(1);
+      setCurrentMessage("");
+      setIsVisible(false);
     }
   }, [gamePhase]);
 
@@ -66,18 +83,14 @@ export const UnifiedMessageDisplay = () => {
       return;
     }
 
-    const fadeOutTimer = setTimeout(() => {
+    addTimer(() => {
       setIsVisible(false);
     }, message.duration);
 
-    const nextMessageTimer = setTimeout(() => {
+    addTimer(() => {
       setNarratorIndex(narratorIndex + 1);
     }, message.duration + 500);
 
-    return () => {
-      clearTimeout(fadeOutTimer);
-      clearTimeout(nextMessageTimer);
-    };
   }, [showingNarrator, narratorIndex]);
 
   // Listen for duel messages from socket
@@ -85,39 +98,48 @@ export const UnifiedMessageDisplay = () => {
     if (!socket) return;
 
     const handleGong = () => {
+      // IMMEDIATELY clear everything
+      clearAllTimers();
       setShowingNarrator(false);
-      setDuelMessage(""); // Don't show "SHOOT!" - it's implied
       setIsVisible(false);
+      setCurrentMessage("");
     };
 
-    const handleNewRound = ({ round }: { round: number; message: string }) => {
-      setCurrentRound(round);
-      setDuelMessage(`═══ ROUND ${round} ═══`);
+    const handleNewRound = ({ round }: { round: number }) => {
+      // IMMEDIATELY clear everything
+      clearAllTimers();
+      
+      setCurrentMessage(`═══ ROUND ${round} ═══`);
       setIsDramatic(true);
       setIsVisible(true);
       
-      // Fade out round indicator after 1.5s
-      setTimeout(() => {
+      addTimer(() => {
         setIsVisible(false);
       }, 1500);
     };
 
     const handleBothHit = () => {
-      setDuelMessage("BOTH HIT — DODGE!");
+      // IMMEDIATELY clear everything
+      clearAllTimers();
+      
+      setCurrentMessage("BOTH HIT — DODGE!");
       setIsDramatic(true);
       setIsVisible(true);
       
-      setTimeout(() => {
+      addTimer(() => {
         setIsVisible(false);
       }, 1500);
     };
 
     const handleBothMiss = () => {
-      setDuelMessage("BOTH MISSED!");
+      // IMMEDIATELY clear everything
+      clearAllTimers();
+      
+      setCurrentMessage("BOTH MISSED!");
       setIsDramatic(false);
       setIsVisible(true);
       
-      setTimeout(() => {
+      addTimer(() => {
         setIsVisible(false);
       }, 1500);
     };
@@ -138,37 +160,34 @@ export const UnifiedMessageDisplay = () => {
   // Show winner announcement in POST_ROUND
   useEffect(() => {
     if (gamePhase === "POST_ROUND" && roundWinner) {
+      // IMMEDIATELY clear everything
+      clearAllTimers();
       setShowingNarrator(false);
       
       if (roundWinner.isSplit) {
-        // Split pot - each gets 45% of total
         const individualPayout = roundWinner.pot / 2;
         setCurrentMessage(`DRAW — POT SPLIT`);
         setIsDramatic(false);
         setIsVisible(true);
         
-        // Show payout after a moment
-        setTimeout(() => {
+        addTimer(() => {
           setCurrentMessage(`Each receives ${individualPayout.toLocaleString()} Lamports`);
           setIsDramatic(false);
+          setIsVisible(true);
         }, 1500);
       } else {
         setCurrentMessage(`${roundWinner.name} WINS!`);
         setIsDramatic(true);
         setIsVisible(true);
         
-        // Show payout after a moment
-        setTimeout(() => {
+        addTimer(() => {
           setCurrentMessage(`+${roundWinner.pot.toLocaleString()} Lamports`);
           setIsDramatic(false);
+          setIsVisible(true);
         }, 1500);
       }
     }
   }, [gamePhase, roundWinner]);
-
-  // Determine what to display
-  const displayMessage = showingNarrator ? currentMessage : duelMessage || currentMessage;
-  const displayDramatic = showingNarrator ? isDramatic : isDramatic;
 
   // Don't render during LOBBY phase
   if (gamePhase === "LOBBY") return null;
@@ -178,20 +197,16 @@ export const UnifiedMessageDisplay = () => {
       <div
         className={`
           text-center px-16 py-4 font-normal italic max-w-2xl
-          ${displayDramatic ? 'text-4xl' : 'text-2xl'}
-          transition-all duration-700
-          ${isVisible ? 'opacity-100' : 'opacity-0'}
+          ${isDramatic ? 'text-4xl' : 'text-2xl'}
+          ${isVisible ? 'block' : 'hidden'}
         `}
         style={{
-          color: displayDramatic ? '#d20f39' : '#6c6f85',
-          textShadow: displayDramatic 
-            ? '0 2px 8px rgba(210, 15, 57, 0.3)' 
-            : '0 2px 4px rgba(108, 111, 133, 0.2)',
+          color: isDramatic ? '#d20f39' : '#6c6f85',
           fontFamily: 'IBM Plex Mono, monospace',
           letterSpacing: '0.05em'
         }}
       >
-        {displayMessage}
+        {currentMessage}
       </div>
     </div>
   );
