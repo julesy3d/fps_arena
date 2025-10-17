@@ -5,7 +5,6 @@ import { useEffect, useState, useRef, useMemo } from "react";
 import { useGameStore } from "@/store/useGameStore";
 import { Fighter } from "./Fighter";
 import { FighterNameLabel } from "./FighterNameLabel";
-import { NarratorSequence } from "./NarratorSequence";
 
 // ============================================
 // AUDIO MANAGER
