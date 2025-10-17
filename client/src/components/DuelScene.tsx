@@ -39,8 +39,9 @@ const useAudio = () => {
   return { playClick, playClack, playHammer, playShoot, playGong };
 };
 
+
 // ============================================
-// SHOOTING BAR - Visual timing indicator
+// SHOOTING BAR - ASCII-style Visual timing indicator
 // ============================================
 const ShootingBar = ({ 
   visible, 
@@ -80,31 +81,51 @@ const ShootingBar = ({
   
   if (!visible) return null;
   
+  // Create 20 rows for the bar
+  const rows = 20;
+  const barPositionRow = Math.floor((1 - barPosition) * rows);
+  const targetZoneStart = Math.floor(rows * 0.20); // 60-80% zone in visual terms
+  const targetZoneEnd = Math.floor(rows * 0.40);
+  
   return (
-    <div className="fixed bottom-8 right-8 z-20 flex flex-col items-center">
-      <div className="relative h-64 w-12 bg-black/80 border-2 border-white">
-        {/* Green target zone */}
-        <div 
-          className="absolute bottom-0 left-0 right-0 bg-green-900/40 border-t-2 border-b-2 border-green-500" 
-          style={{ height: '20%', bottom: '60%' }} 
-        />
-        {/* Moving red bar */}
-        <div 
-          className="absolute left-0 right-0 h-2 bg-red-500" 
-          style={{ 
-            bottom: `${barPosition * 100}%`, 
-            boxShadow: '0 0 10px rgba(255, 0, 0, 0.8)' 
-          }} 
-        />
-        {/* "NOW!" indicator when in perfect zone */}
-        {barPosition >= 0.68 && barPosition <= 0.72 && (
-          <div className="absolute left-0 right-0 text-center text-xs text-green-400 font-bold" style={{ bottom: '70%' }}>
-            NOW!
-          </div>
-        )}
+    <div className="fixed bottom-8 right-8 z-20 flex flex-col items-center gap-2">
+      {/* ASCII Bar */}
+      <div 
+        className="border-dashed-ascii font-mono text-sm leading-tight p-2"
+        style={{ 
+          backgroundColor: '#dce0e8', // --crust
+          color: '#7c7f93' // --overlay2
+        }}
+      >
+        {Array.from({ length: rows }).map((_, i) => {
+          const isBar = i === barPositionRow;
+          const isInTargetZone = i >= targetZoneStart && i <= targetZoneEnd;
+          
+          let char = '│';
+          let color = '#7c7f93'; // --overlay2 (default)
+          
+          if (isBar) {
+            char = '█';
+            color = '#d20f39'; // --red (moving bar)
+          } else if (isInTargetZone) {
+            char = '░';
+            color = '#40a02b'; // --green (target zone)
+          }
+          
+          return (
+            <div key={i} style={{ color }}>
+              {char}
+            </div>
+          );
+        })}
       </div>
-      <div className="mt-2 text-sm text-white font-mono">
-        {(barPosition * 100).toFixed(0)}%
+      
+      {/* Percentage indicator OR "NOW!" */}
+      <div 
+        className="font-mono text-sm font-bold"
+        style={{ color: barPosition >= 0.60 && barPosition <= 0.80 ? '#40a02b' : '#7c7f93' }}
+      >
+        {barPosition >= 0.60 && barPosition <= 0.80 ? 'NOW!' : `${(barPosition * 100).toFixed(0)}%`}
       </div>
     </div>
   );

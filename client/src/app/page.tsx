@@ -94,6 +94,13 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [gamePhase, isFighter]); // Added dependencies
 
+  // Auto-open lobby when returning to LOBBY phase
+  useEffect(() => {
+    if (gamePhase === "LOBBY") {
+      setLobbyVisible(true);
+    }
+  }, [gamePhase]);
+
   useEffect(() => {
     if (gamePhase === "IN_ROUND" && isFighter && isLobbyVisible) {
       console.log("🔒 Auto-closing lobby - you're in combat!");
