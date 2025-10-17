@@ -125,19 +125,17 @@ const DuelOverlay = ({
 }) => {
   return (
     <>
-      {/* Main message at top */}
       <div className="fixed top-1/4 left-1/2 -translate-x-1/2 z-10 text-center">
         <h1 className="text-6xl font-bold text-white drop-shadow-[0_0_20px_rgba(0,0,0,0.9)]">
           {message}
         </h1>
       </div>
       
-      {/* Action prompt at bottom */}
-      {canClick && actionType && (
+      {/* Only show SHOOT prompt now */}
+      {canClick && actionType === 'shoot' && (
         <div className="fixed bottom-1/4 left-1/2 -translate-x-1/2 z-10">
           <div className="text-2xl text-yellow-400 font-mono animate-pulse">
-            {actionType === 'draw' && "[CLICK TO DRAW]"}
-            {actionType === 'shoot' && "[CLICK TO SHOOT]"}
+            [CLICK TO SHOOT]
           </div>
         </div>
       )}
@@ -312,34 +310,24 @@ export const DuelUI = () => {
       setShowNarrator(false);
       setNarratorComplete(true);
       
-      setMessage("DRAW!"); 
-      setCanClick(true); 
-      setActionType('draw'); 
-      setBarVisible(false); 
-    };
-
-    // You drew successfully → Wait for opponent
-    const onDrawSuccess = () => { 
-      setMessage("WAITING FOR OPPONENT..."); 
-      setCanClick(false); 
-      setActionType(null);
-      useGameStore.getState().updateFighterAnimation(selfId, 'armed');
-    };
-
-    // Opponent drew their weapon
-    const onOpponentDrew = ({ playerId }: { playerId: string }) => {
-      useGameStore.getState().updateFighterAnimation(playerId, 'armed');
-    };
-
-    // Both drew → Start aiming phase
-    const onAimPhase = () => { 
-      setMessage("AIM!"); 
+      // Go straight to shooting (no draw phase)
+      setMessage("SHOOT!"); 
       setCanClick(true); 
       setActionType('shoot'); 
       setBarVisible(true);
+      
+      // Set all fighters to armed state immediately
       fighters.forEach(f => {
         useGameStore.getState().updateFighterAnimation(f.id, 'armed');
       });
+    };
+
+    // Start aiming phase
+    const onAimPhase = () => { 
+      setMessage("SHOOT!"); 
+      setCanClick(true); 
+      setActionType('shoot'); 
+      setBarVisible(true);
     };
 
     // Bar position update (60fps from server)
@@ -381,14 +369,6 @@ export const DuelUI = () => {
       hasShotThisRound.current = false; 
     };
 
-    // Both failed to draw → Pick up guns again
-    const onBothFailedDraw = () => { 
-      setMessage("BOTH FAILED - PICK UP GUNS!"); 
-      setCanClick(true); 
-      setActionType('draw'); 
-      setBarVisible(false); 
-    };
-
     // Game phase changed (used for POST_ROUND animations)
     const onGamePhaseChange = ({ phase, winnerData }: any) => {
       if (phase === "POST_ROUND" && winnerData) {
@@ -420,15 +400,12 @@ export const DuelUI = () => {
     socket.on("duel:bothReady", onBothReady);
     socket.on("duel:state", onDuelState);
     socket.on("duel:gong", onGong);
-    socket.on("duel:drawSuccess", onDrawSuccess);
     socket.on("duel:aimPhase", onAimPhase);
     socket.on("duel:barUpdate", onBarUpdate);
     socket.on("duel:bothHit", onBothHit);
     socket.on("duel:bothMiss", onBothMiss);
     socket.on("duel:newRound", onNewRound);
-    socket.on("duel:bothFailedDraw", onBothFailedDraw);
     socket.on("duel:shot", onShot);
-    socket.on("duel:opponentDrew", onOpponentDrew);
     socket.on("game:phaseChange", onGamePhaseChange);
     
     // Cleanup function
@@ -437,28 +414,23 @@ export const DuelUI = () => {
       socket.off("duel:bothReady", onBothReady);
       socket.off("duel:state", onDuelState);
       socket.off("duel:gong", onGong);
-      socket.off("duel:drawSuccess", onDrawSuccess);
       socket.off("duel:aimPhase", onAimPhase);
       socket.off("duel:barUpdate", onBarUpdate);
       socket.off("duel:bothHit", onBothHit);
       socket.off("duel:bothMiss", onBothMiss);
       socket.off("duel:newRound", onNewRound);
-      socket.off("duel:bothFailedDraw", onBothFailedDraw);
       socket.off("duel:shot", onShot);
-      socket.off("duel:opponentDrew", onOpponentDrew);
       socket.off("game:phaseChange", onGamePhaseChange);
     };
   }, [socket, selfId, playGong, fighters, isAIMode]);
   
-  // Handle user clicks (draw or shoot)
+  // Handle user clicks (shoot)
   const handleClick = () => {
     if (!canClick || !socket || !actionType) return;
     if (actionType === 'shoot' && hasShotThisRound.current) return;
     
-    if (actionType === 'draw') {
-      socket.emit("duel:draw");
-      setCanClick(false);
-    } else if (actionType === 'shoot') {
+    // Only shooting now, no draw
+    if (actionType === 'shoot') {
       console.log(`CLIENT CLICK: Shooting at bar position ${barPosition.toFixed(2)}`);
       socket.emit("duel:shoot");
       hasShotThisRound.current = true;
@@ -475,7 +447,6 @@ export const DuelUI = () => {
             console.log("🎬 Narrator sequence complete");
             setNarratorComplete(true);
             setShowNarrator(false);
-            setMessage("HIGH NOON APPROACHES...");
           }}
         />
       )}
