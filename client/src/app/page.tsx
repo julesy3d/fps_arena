@@ -11,6 +11,9 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { DuelUI } from "@/components/DuelScene";
 import { AsciiRenderer } from "@react-three/drei";
+import { UnifiedMessageDisplay } from "@/components/UnifiedMessageDisplay";
+
+
 
 declare global {
   interface Window {
@@ -132,8 +135,12 @@ export default function Home() {
       {/* Global Status UI - Always visible */}
       <GlobalStatusUI />
 
-      {/* Title Overlay */}
-      <TitleOverlay onHover={setTitleHovered} />
+      {/* Title area - shows title in LOBBY, messages during game */}
+      {gamePhase === "LOBBY" ? (
+        <TitleOverlay onHover={setTitleHovered} />
+      ) : (
+        <UnifiedMessageDisplay />
+      )}
 
       {/* Wallet Button */}
       {mounted && walletReady && !connected && !isTitleHovered && (
@@ -174,26 +181,6 @@ export default function Home() {
 
       {/* Duel UI - Only during active duel */}
       {gamePhase === "IN_ROUND" && isFighter && <DuelUI />}
-
-      {/* Round Winner Modal */}
-      {roundWinner && gamePhase === "POST_ROUND" && (
-        <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="border-8 border-yellow-400 bg-black p-12 text-center">
-            <h2 className="font-title text-7xl font-bold text-yellow-400 mb-4">
-              {roundWinner.isSplit ? "DRAW!" : "VICTORY!"}
-            </h2>
-            <p className="text-3xl text-white">
-              {roundWinner.isSplit ? "BOTH PLAYERS" : roundWinner.name}
-            </p>
-            <p className="text-2xl text-gray-400 mt-4">
-              {roundWinner.isSplit ? "Each receives:" : "Winner takes:"}
-            </p>
-            <p className="text-2xl text-green-400 mt-2">
-              +{roundWinner.pot} Lamports
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* Footer */}
       <footer className="fixed bottom-0 left-0 right-0 border-t border-gray-700 bg-black/80 p-1 text-center text-xs text-gray-400">
