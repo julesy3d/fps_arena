@@ -72,15 +72,13 @@ let duelData = {}; // { [socketId]: { hasDrawn, drawTime, hasFired, shotResult, 
 
 // Bar configuration - gets faster each round
 const getBarCycleDuration = (round) => {
-  // --- Exponential Difficulty Curve ---
-  const baseDuration = 2200; // The duration of Round 1 in ms.
-  const speedFactor = 0.75;  // Each round will be 75% as long as the previous one.
+  // --- Exponential Difficulty Curve (MUCH FASTER) ---
+  const baseDuration = 2200; // Round 1 stays the same
+  const speedFactor = 0.65;  // Each round is 65% as long (was 75%)
   
-  // Calculation: base * factor^(round-1)
   const duration = baseDuration * Math.pow(speedFactor, round - 1);
   
-  // Set a minimum duration so it doesn't become impossible.
-  const minimumDuration = 800; // "Hell Mode" cap.
+  const minimumDuration = 500; // Harder minimum (was 800ms)
   
   return Math.max(duration, minimumDuration);
 };
@@ -158,11 +156,6 @@ const startDuel = () => {
       health: players[id].health
     }))
   });
-  
-  // Random delay before GONG (12-15 seconds)
-  const gongDelay = 12000 + Math.random() * 3000;
-  console.log(`⏳ GONG in ${(gongDelay / 1000).toFixed(1)}s`);
-  
 };
 
 // ============================================
@@ -1031,7 +1024,7 @@ io.on("connection", (socket) => {
         console.log("🔥 All players are ready. Starting the duel cinematic.");
         io.emit("duel:bothReady");
 
-        const gongDelay = 12000 + Math.random() * 3000;
+        const gongDelay = 27000 + Math.random() * 5000; // 27-32 seconds total
         console.log(`⏳ GONG in ${(gongDelay / 1000).toFixed(1)}s`);
         setTimeout(() => {
           sendGong();

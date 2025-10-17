@@ -15,6 +15,7 @@ const useAudio = () => {
   const hammerAudioRef = useRef<HTMLAudioElement | null>(null);
   const shootAudioRef = useRef<HTMLAudioElement | null>(null);
   const gongAudioRef = useRef<HTMLAudioElement | null>(null);
+  const cinematicIntroRef = useRef<HTMLAudioElement | null>(null);
   
   useEffect(() => {
     clickAudioRef.current = new Audio('/click.aac');
@@ -22,21 +23,67 @@ const useAudio = () => {
     hammerAudioRef.current = new Audio('/hammer.aac');
     shootAudioRef.current = new Audio('/shoot.aac');
     gongAudioRef.current = new Audio('/gong.aac');
+    cinematicIntroRef.current = new Audio('/cinematic_intro.aac');
     
     clickAudioRef.current.load();
     clackAudioRef.current.load();
     hammerAudioRef.current.load();
     shootAudioRef.current.load();
     gongAudioRef.current.load();
+    cinematicIntroRef.current.load();
   }, []);
   
-  const playClick = () => { if (clickAudioRef.current) { clickAudioRef.current.currentTime = 0; clickAudioRef.current.play().catch(e => console.warn('Sound failed:', e)); } };
-  const playClack = () => { if (clackAudioRef.current) { clackAudioRef.current.currentTime = 0; clackAudioRef.current.play().catch(e => console.warn('Sound failed:', e)); } };
-  const playHammer = () => { if (hammerAudioRef.current) { hammerAudioRef.current.currentTime = 0; hammerAudioRef.current.play().catch(e => console.warn('Sound failed:', e)); } };
-  const playShoot = () => { if (shootAudioRef.current) { shootAudioRef.current.currentTime = 0; shootAudioRef.current.play().catch(e => console.warn('Sound failed:', e)); } };
-  const playGong = () => { if (gongAudioRef.current) { gongAudioRef.current.currentTime = 0; gongAudioRef.current.play().catch(e => console.warn('Sound failed:', e)); } };
+  const playClick = () => { 
+    if (clickAudioRef.current) { 
+      clickAudioRef.current.currentTime = 0; 
+      clickAudioRef.current.play().catch(e => console.warn('Sound failed:', e)); 
+    } 
+  };
   
-  return { playClick, playClack, playHammer, playShoot, playGong };
+  const playClack = () => { 
+    if (clackAudioRef.current) { 
+      clackAudioRef.current.currentTime = 0; 
+      clackAudioRef.current.play().catch(e => console.warn('Sound failed:', e)); 
+    } 
+  };
+  
+  const playHammer = () => { 
+    if (hammerAudioRef.current) { 
+      hammerAudioRef.current.currentTime = 0; 
+      hammerAudioRef.current.play().catch(e => console.warn('Sound failed:', e)); 
+    } 
+  };
+  
+  const playShoot = () => { 
+    if (shootAudioRef.current) { 
+      shootAudioRef.current.currentTime = 0; 
+      shootAudioRef.current.play().catch(e => console.warn('Sound failed:', e)); 
+    } 
+  };
+  
+  const playGong = () => { 
+    if (gongAudioRef.current) { 
+      gongAudioRef.current.currentTime = 0; 
+      gongAudioRef.current.play().catch(e => console.warn('Sound failed:', e)); 
+    } 
+  };
+  
+  const playCinematicIntro = () => {
+    if (cinematicIntroRef.current) {
+      cinematicIntroRef.current.currentTime = 0;
+      cinematicIntroRef.current.volume = 1.0;
+      cinematicIntroRef.current.play().catch(e => console.warn('Cinematic intro failed:', e));
+    }
+  };
+  
+  const stopCinematicIntro = () => {
+    if (cinematicIntroRef.current && !cinematicIntroRef.current.paused) {
+      cinematicIntroRef.current.pause();
+      cinematicIntroRef.current.currentTime = 0;
+    }
+  };
+  
+  return { playClick, playClack, playHammer, playShoot, playGong, playCinematicIntro, stopCinematicIntro };
 };
 
 
@@ -235,7 +282,7 @@ export const DuelUI = () => {
   // Get store data - ADDED gamePhase here (was missing!)
   const { socket, fighters, gamePhase } = useGameStore();
   const selfId = socket?.id || "";
-  const { playClick, playClack, playHammer, playShoot, playGong } = useAudio();
+  const { playClick, playClack, playHammer, playShoot, playGong, playCinematicIntro, stopCinematicIntro } = useAudio();
 
   // UI State
   const [isWaitingForOpponent, setIsWaitingForOpponent] = useState(true);
@@ -278,7 +325,7 @@ export const DuelUI = () => {
     const onBothReady = () => {
       console.log("🤝 Both players are ready. Starting narrator sequence.");
       setIsWaitingForOpponent(false);
-      setShowNarrator(true);
+      playCinematicIntro(); // Start 24-second cinematic intro
     };
 
     // Duel state update
@@ -291,12 +338,13 @@ export const DuelUI = () => {
     // GONG! → Hide narrator, start draw phase
     const onGong = () => { 
       playGong();
+      stopCinematicIntro(); // Stop cinematic immediately when combat starts
       
       // Hide narrator if still showing
-      setShowNarrator(false);
-      setNarratorComplete(true);
+      // (UnifiedMessageDisplay handles this via socket event)
       
       // Go straight to shooting (no draw phase)
+      setMessage("SHOOT!"); 
       setCanClick(true); 
       setActionType('shoot'); 
       setBarVisible(true);
