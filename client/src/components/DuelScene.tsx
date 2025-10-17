@@ -344,7 +344,6 @@ export const DuelUI = () => {
       // (UnifiedMessageDisplay handles this via socket event)
       
       // Go straight to shooting (no draw phase)
-      setMessage("SHOOT!"); 
       setCanClick(true); 
       setActionType('shoot'); 
       setBarVisible(true);
