@@ -182,8 +182,13 @@ export default function Home() {
             <h2 className="font-title text-7xl font-bold text-yellow-400 mb-4">
               {roundWinner.isSplit ? "DRAW!" : "VICTORY!"}
             </h2>
-            <p className="text-3xl text-white">{roundWinner.name}</p>
+            <p className="text-3xl text-white">
+              {roundWinner.isSplit ? "BOTH PLAYERS" : roundWinner.name}
+            </p>
             <p className="text-2xl text-gray-400 mt-4">
+              {roundWinner.isSplit ? "Each receives:" : "Winner takes:"}
+            </p>
+            <p className="text-2xl text-green-400 mt-2">
               +{roundWinner.pot} Lamports
             </p>
           </div>

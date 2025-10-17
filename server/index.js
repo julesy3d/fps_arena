@@ -166,139 +166,58 @@ const startDuel = () => {
 };
 
 // ============================================
-// DUEL: SEND GONG (PHASE 1: DRAW) - ONCE!
+// DUEL: SEND GONG - GO STRAIGHT TO AIM PHASE
 // ============================================
 const sendGong = () => {
-  console.log(`🔔 GONG! - DRAW PHASE`);
+  console.log(`🔔 GONG! - GOING STRAIGHT TO AIM PHASE`);
   
-  duelState = "DRAW_PHASE";
+  duelState = "AIM_PHASE";
   gongTime = Date.now();
+  synchronizedBarStartTime = Date.now();
   
-  // Tell all fighters
-  io.emit("duel:gong", { 
-    barCycleDuration: getBarCycleDuration(currentRound)
-  });
-
-  // ADDED: AI automatically draws after a short, realistic delay
-  const fighterIds = Array.from(activeFighterIds);
-  fighterIds.forEach(id => {
-    if (duelData[id]?.isAI) {
-      const aiDrawDelay = 200 + Math.random() * 300; // 200-500ms reaction
-      setTimeout(() => {
-        console.log(`🤖 AI ${players[id].name} is drawing...`);
-        handleDraw(id);
-      }, aiDrawDelay);
-    }
-  });
-  
-  // Start 30-second overall timeout
-  duelTimerIntervalId = setTimeout(() => {
-    console.log("⏱️ Duel timeout (30s)");
-    endDuel("TIMEOUT");
-  }, duelMaxDuration);
-  
-  // Check if both drew after 1.5s
-  setTimeout(() => {
-    checkIfBothDrewOrFailed();
-  }, DRAW_WINDOW);
-};
-
-// ============================================
-// DUEL: CHECK IF BOTH DREW (OR FAILED)
-// ============================================
-const checkIfBothDrewOrFailed = () => {
-  if (duelState !== "DRAW_PHASE") return;
-  
-  const fighterIds = Array.from(activeFighterIds);
-  const drawnFighters = fighterIds.filter(id => duelData[id]?.hasDrawn);
-  const drewCount = drawnFighters.length;
-  
-  console.log(`📊 Draw phase ended: ${drewCount}/2 players drew`);
-  
-  if (drewCount === 2) {
-    // Both drew successfully - start continuous shooting phase
-    console.log("✅ Both players drew - starting continuous AIM PHASE");
-    startAimPhase();
-    
-  } else if (drewCount === 1) {
-    // One drew, one failed
-    const drawerId = drawnFighters[0];
-    const drawer = players[drawerId];
-    const failedId = fighterIds.find(id => id !== drawerId);
-    const failed = players[failedId];
-    
-    console.log(`⚠️ ${failed.name} failed to draw, ${drawer.name} has advantage`);
-    
-    // Drawer gets ONE shot to win
-    // If they miss, advance to next round
-    startAimPhase(); // But only drawer can shoot
-    
-    // Mark failed player as unable to shoot this round
-    duelData[failedId].hasFired = true;
-    duelData[failedId].shotResult = 'forfeit';
-    
-  } else {
-    // Both failed to draw
-    console.log(`❌ Both players failed to draw - advancing to Round ${currentRound + 1}`);
-    io.emit("duel:bothFailedDraw");
-    
-    setTimeout(() => {
-      advanceRoundAfterBothFail();
-    }, 1000);
-  }
-};
-
-// ============================================
-// DUEL: ADVANCE ROUND (AFTER BOTH FAIL DRAW)
-// ============================================
-const advanceRoundAfterBothFail = () => {
-  currentRound++;
-  console.log(`⏭️ Advancing to round ${currentRound} after both failed draw`);
-  
-  // Reset states but DON'T send GONG again
+  // Mark all fighters as having "drawn" (skip draw mechanic)
   const fighterIds = Array.from(activeFighterIds);
   fighterIds.forEach(id => {
     if (duelData[id]) {
-      duelData[id].hasDrawn = false;
-      duelData[id].drawTime = null;
-      duelData[id].hasFired = false;
-      duelData[id].shotResult = null;
-      duelData[id].aiShotAttempted = false;
+      duelData[id].hasDrawn = true;
+      duelData[id].drawTime = 0;
     }
   });
   
-  // Go back to draw phase (guns on ground, pick them up)
-  duelState = "DRAW_PHASE";
-  
-  io.emit("duel:newRound", {
-    round: currentRound,
-    barCycleDuration: getBarCycleDuration(currentRound),
-    message: "PICK UP YOUR GUNS!"
+  // Tell all fighters to start aiming
+  io.emit("duel:gong", { 
+    barCycleDuration: getBarCycleDuration(currentRound)
   });
   
-  // Give them 1.5s to pick up guns
-  setTimeout(() => {
-    checkIfBothDrewOrFailed();
-  }, DRAW_WINDOW);
-};
-
-// ============================================
-// DUEL: START AIM PHASE (SYNCHRONIZED BAR)
-// ============================================
-const startAimPhase = () => {
-  duelState = "AIM_PHASE";
-  synchronizedBarStartTime = Date.now();
-  
-  console.log(`🎯 AIM PHASE - Round ${currentRound} (${getBarCycleDuration(currentRound)}ms cycle)`);
-  
-  // Tell clients aim phase started
+  // Immediately start aim phase
   io.emit("duel:aimPhase", {
     startTime: synchronizedBarStartTime,
     barCycleDuration: getBarCycleDuration(currentRound)
   });
   
+  console.log(`🎯 AIM PHASE - Round ${currentRound} (${getBarCycleDuration(currentRound)}ms cycle)`);
+  
+  // ADDED: AI automatically shoots after a short, realistic delay
+  fighterIds.forEach(id => {
+    if (duelData[id]?.isAI) {
+      const aiDrawDelay = 200 + Math.random() * 300; // 200-500ms reaction
+      setTimeout(() => {
+        console.log(`🤖 AI ${players[id].name} is preparing to shoot...`);
+      }, aiDrawDelay);
+    }
+  });
+  
   // Start synchronized bar broadcasts
   startBarUpdateLoop();
+  
+  // Start 30-second overall timeout (MOVED HERE from startDuel)
+  if (duelTimerIntervalId) {
+    clearTimeout(duelTimerIntervalId);
+  }
+  duelTimerIntervalId = setTimeout(() => {
+    console.log("⏱️ Duel timeout (30s)");
+    endDuel("TIMEOUT");
+  }, duelMaxDuration);
 };
 
 // ============================================
@@ -372,72 +291,6 @@ const startBarUpdateLoop = () => {
     }
 
   }, 1000 / 60);
-};
-
-// ============================================
-// DUEL: HANDLE DRAW
-// ============================================
-const handleDraw = (socketId) => {
-  const player = players[socketId];
-  const playerData = duelData[socketId];
-  
-  if (!player || !playerData || !activeFighterIds.has(socketId)) {
-    return;
-  }
-  
-  // Check if already drawn
-  if (playerData.hasDrawn) {
-    console.log(`⚠️ ${player.name} already has weapon drawn`);
-    return;
-  }
-  
-  // Check if picking up gun
-  if (playerData.isPickingUpGun) {
-    console.log(`⚠️ ${player.name} is picking up gun`);
-    return;
-  }
-  
-  // Check if before GONG
-  if (duelState === "WAITING") {
-    console.log(`💥 ${player.name} drew BEFORE gong - gun drops!`);
-    return;
-  }
-  
-  // Check if not in draw phase
-  if (duelState !== "DRAW_PHASE") {
-    console.log(`⚠️ ${player.name} tried to draw outside draw phase`);
-    return;
-  }
-  
-  // Valid draw!
-  const now = Date.now();
-  const drawTime = now - gongTime;
-  
-  console.log(`🔫 ${player.name} DRAWS weapon (${drawTime}ms after GONG)`);
-  playerData.hasDrawn = true;
-  playerData.drawTime = drawTime;
-  
-  // Tell this player
-  const socket = io.sockets.sockets.get(socketId);
-  if (socket) {
-    socket.emit("duel:drawSuccess");
-  }
-  
-  // Tell opponent
-  const opponentId = Array.from(activeFighterIds).find(id => id !== socketId);
-  if (opponentId) {
-    const opponentSocket = io.sockets.sockets.get(opponentId);
-    if (opponentSocket) {
-      opponentSocket.emit("duel:opponentDrew", { playerId: socketId });
-    }
-  }
-  
-  // Check if both have drawn now
-  const bothDrew = Array.from(activeFighterIds).every(id => duelData[id]?.hasDrawn);
-  if (bothDrew) {
-    console.log("✅ Both players drew - starting AIM PHASE");
-    startAimPhase();
-  }
 };
 
 // ============================================
@@ -609,7 +462,7 @@ const advanceRound = () => {
 const endDuel = (reason, winner = null) => {
   console.log(`🏁 Duel ending: ${reason}`);
   
-  // Clear timers
+  // CRITICAL: Clear ALL timers to prevent loops
   if (duelTimerIntervalId) {
     clearTimeout(duelTimerIntervalId);
     duelTimerIntervalId = null;
@@ -619,7 +472,9 @@ const endDuel = (reason, winner = null) => {
     barUpdateIntervalId = null;
   }
   
+  // Stop any ongoing processes
   duelState = "FINISHED";
+  synchronizedBarStartTime = null;
   
   // Determine payout
   let isSplit = false;
@@ -1155,10 +1010,6 @@ io.on("connection", (socket) => {
   // DUEL SOCKET HANDLERS
   // ============================================
   
-  socket.on("duel:draw", () => {
-    handleDraw(socket.id);
-  });
-  
   socket.on("duel:shoot", () => {
     handleShoot(socket.id);
   });
@@ -1180,7 +1031,7 @@ io.on("connection", (socket) => {
         console.log("🔥 All players are ready. Starting the duel cinematic.");
         io.emit("duel:bothReady");
 
-        const gongDelay = 5000 + Math.random() * 3000;
+        const gongDelay = 12000 + Math.random() * 3000;
         console.log(`⏳ GONG in ${(gongDelay / 1000).toFixed(1)}s`);
         setTimeout(() => {
           sendGong();

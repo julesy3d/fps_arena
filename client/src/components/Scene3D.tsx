@@ -5,48 +5,63 @@ import { DuelStage3D } from "./DuelScene";
 import * as THREE from "three";
 
 export const Scene3D = () => {
-  const { camera, gl, scene } = useThree();
-  const { gamePhase, socket, fighters } = useGameStore();
-  
-  const targetPosition = useRef(new THREE.Vector3(-10, 2, 0));
-  const targetLookAt = useRef(new THREE.Vector3(0, 1, 0));
-  const isAnimating = useRef(false);
-  const frameCount = useRef(0);
-  
-  // 18 FPS throttle for retro aesthetic
-  const TARGET_FPS = 18;
-  const FRAME_SKIP = Math.round(60 / TARGET_FPS); // = 3 frames
-  
-  const isFighter = fighters?.some((f) => f.id === socket?.id) ?? false;
+    const { camera, gl, scene } = useThree();
+    const { gamePhase, socket, fighters } = useGameStore();
+    
+    const targetPosition = useRef(new THREE.Vector3(-10, 2, 0));
+    const targetLookAt = useRef(new THREE.Vector3(0, 1, 0));
+    const isAnimating = useRef(false);
+    const frameCount = useRef(0);
+    
+    // 18 FPS throttle for retro aesthetic
+    const TARGET_FPS = 18;
+    const FRAME_SKIP = Math.round(60 / TARGET_FPS); // = 3 frames
+    
+    const isFighter = fighters?.some((f) => f.id === socket?.id) ?? false;
 
-  // Debug logging
-  useEffect(() => {
-    console.log('🎮 Camera state change:', {
-      gamePhase,
-      isFighter,
-      currentCameraPos: camera.position.toArray(),
-      targetPos: targetPosition.current.toArray()
-    });
-  }, [gamePhase, isFighter, camera]);
-
-  // Update target position when game state changes
-  useEffect(() => {
+    // Camera positioning logic
+    useEffect(() => {
     let newPosition: THREE.Vector3;
 
     if (gamePhase === "LOBBY") {
-      newPosition = new THREE.Vector3(-10, 2, 0); // Distant side view
+        newPosition = new THREE.Vector3(-10, 2, 0); // Distant side view
     } else if (gamePhase === "IN_ROUND" || gamePhase === "POST_ROUND") {
-      newPosition = isFighter 
-        ? new THREE.Vector3(2, 2, 7)   // TPS for fighters
-        : new THREE.Vector3(-6, 2, 0);  // Closer side view for spectators
+        if (isFighter && fighters && fighters.length >= 2) {
+        // Find YOUR fighter object
+        const yourFighter = fighters.find(f => f.id === socket?.id);
+        
+        if (yourFighter) {
+            // Use the fighter's actual 3D position from server as source of truth
+            // Server assigns position based on bet order:
+            //   Highest bidder  → [0, 0, -3]
+            //   Second bidder   → [0, 0, 3]
+            
+            if (yourFighter.position[2] < 0) {
+            // You're at negative Z (-3) → Camera behind you at negative Z
+            newPosition = new THREE.Vector3(2, 2, 7);
+            console.log('📹 You are fighter at Z=-3, camera at Z=-7');
+            } else {
+            // You're at positive Z (3) → Camera behind you at positive Z
+            newPosition = new THREE.Vector3(2, 2, -7);
+            console.log('📹 You are fighter at Z=+3, camera at Z=+7');
+            }
+        } else {
+            // Fallback - shouldn't happen if isFighter is true
+            console.warn('⚠️ isFighter true but fighter not found in array');
+            newPosition = new THREE.Vector3(2, 2, 7);
+        }
+        } else {
+        // Spectator view
+        newPosition = new THREE.Vector3(-6, 2, 0);
+        }
     } else {
-      return;
+        return;
     }
 
     console.log('🎯 New target position:', newPosition.toArray());
     targetPosition.current.copy(newPosition);
     isAnimating.current = true;
-  }, [gamePhase, isFighter]);
+    }, [gamePhase, isFighter, socket?.id, fighters]);
 
   // Manual render loop at 18fps with camera animation
   useFrame(() => {
