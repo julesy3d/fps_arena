@@ -64,21 +64,26 @@ export const NarratorSequence = ({ onComplete }: NarratorSequenceProps) => {
   const currentMessage = MESSAGES[currentIndex];
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center pointer-events-none">
-      <div
-        className={`
-          text-center px-8 py-4
-          ${currentMessage.dramatic ? 'text-6xl font-bold text-yellow-400' : 'text-4xl text-white'}
-          transition-all duration-700
-          ${isVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}
-        `}
-        style={{
-          textShadow: '0 0 20px rgba(0, 0, 0, 0.9), 0 0 40px rgba(0, 0, 0, 0.7)',
-          fontFamily: 'IBM Plex Mono, monospace',
-        }}
-      >
-        {currentMessage.text}
-      </div>
+    <div
+    className={`
+        text-center px-8 py-4 font-normal italic
+        ${currentMessage.dramatic 
+        ? 'text-5xl' 
+        : 'text-3xl'
+        }
+        transition-all duration-700
+        ${isVisible ? 'opacity-100' : 'opacity-0'}
+    `}
+    style={{
+        color: currentMessage.dramatic ? '#d20f39' : '#6c6f85', // --red or --subtext0
+        textShadow: currentMessage.dramatic 
+        ? '0 2px 8px rgba(210, 15, 57, 0.3)' 
+        : '0 2px 4px rgba(108, 111, 133, 0.2)',
+        fontFamily: 'IBM Plex Mono, monospace',
+        letterSpacing: '0.05em'
+    }}
+    >
+    {currentMessage.text}
     </div>
   );
 };

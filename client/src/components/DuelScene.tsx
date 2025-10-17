@@ -112,38 +112,6 @@ const ShootingBar = ({
 };
 
 // ============================================
-// DUEL OVERLAY - Shows messages and prompts
-// ============================================
-const DuelOverlay = ({ 
-  message, 
-  canClick, 
-  actionType 
-}: { 
-  message: string; 
-  canClick: boolean; 
-  actionType: 'draw' | 'shoot' | null; 
-}) => {
-  return (
-    <>
-      <div className="fixed top-1/4 left-1/2 -translate-x-1/2 z-10 text-center">
-        <h1 className="text-6xl font-bold text-white drop-shadow-[0_0_20px_rgba(0,0,0,0.9)]">
-          {message}
-        </h1>
-      </div>
-      
-      {/* Only show SHOOT prompt now */}
-      {canClick && actionType === 'shoot' && (
-        <div className="fixed bottom-1/4 left-1/2 -translate-x-1/2 z-10">
-          <div className="text-2xl text-yellow-400 font-mono animate-pulse">
-            [CLICK TO SHOOT]
-          </div>
-        </div>
-      )}
-    </>
-  );
-};
-
-// ============================================
 // 3D SCENE CONTENT - Renders fighters
 // ============================================
 const DuelSceneContent = ({ fighters }: { fighters: any[] }) => {
@@ -251,7 +219,6 @@ export const DuelUI = () => {
 
   // UI State
   const [isWaitingForOpponent, setIsWaitingForOpponent] = useState(true);
-  const [message, setMessage] = useState<string>("");
   const [canClick, setCanClick] = useState<boolean>(false);
   const [actionType, setActionType] = useState<'draw' | 'shoot' | null>(null);
   const [barVisible, setBarVisible] = useState<boolean>(false);
@@ -296,7 +263,6 @@ export const DuelUI = () => {
 
     // Duel state update
     const onDuelState = () => { 
-      setMessage("HIGH NOON APPROACHES..."); 
       setCanClick(false); 
       setActionType(null); 
       setBarVisible(false); 
@@ -311,7 +277,6 @@ export const DuelUI = () => {
       setNarratorComplete(true);
       
       // Go straight to shooting (no draw phase)
-      setMessage("SHOOT!"); 
       setCanClick(true); 
       setActionType('shoot'); 
       setBarVisible(true);
@@ -324,7 +289,6 @@ export const DuelUI = () => {
 
     // Start aiming phase
     const onAimPhase = () => { 
-      setMessage("SHOOT!"); 
       setCanClick(true); 
       setActionType('shoot'); 
       setBarVisible(true);
@@ -345,7 +309,6 @@ export const DuelUI = () => {
 
     // Both hit → Dodge!
     const onBothHit = () => { 
-      setMessage("DODGE!"); 
       setCanClick(false); 
       setActionType(null);
       fighters.forEach(f => {
@@ -355,14 +318,12 @@ export const DuelUI = () => {
 
     // Both missed → Try again
     const onBothMiss = () => { 
-      setMessage("BOTH MISSED!"); 
       setCanClick(false); 
       setActionType(null); 
     };
 
     // New round (after both miss or dodge)
     const onNewRound = ({ message: serverMessage }: { message: string }) => { 
-      setMessage(serverMessage); 
       setCanClick(true); 
       setActionType('shoot'); 
       setBarVisible(true); 
@@ -389,7 +350,6 @@ export const DuelUI = () => {
         }
         
         setIsWaitingForOpponent(true); 
-        setMessage("");
         setCanClick(false); 
         setActionType(null); 
         setBarVisible(false);
@@ -440,17 +400,6 @@ export const DuelUI = () => {
   
   return (
     <div className="absolute inset-0 cursor-crosshair" onClick={handleClick}>
-      {/* === NARRATOR SEQUENCE === */}
-      {showNarrator && !narratorComplete && (
-        <NarratorSequence
-          onComplete={() => {
-            console.log("🎬 Narrator sequence complete");
-            setNarratorComplete(true);
-            setShowNarrator(false);
-          }}
-        />
-      )}
-
       {/* === WAITING FOR OPPONENT === */}
       {isWaitingForOpponent && (
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/50">
@@ -467,8 +416,14 @@ export const DuelUI = () => {
         </div>
       )}
       
-      {/* === DUEL MESSAGES & PROMPTS === */}
-      <DuelOverlay message={message} canClick={canClick} actionType={actionType} />
+      {/* === CLICK TO SHOOT PROMPT === */}
+      {canClick && actionType === 'shoot' && (
+        <div className="fixed bottom-1/4 left-1/2 -translate-x-1/2 z-10">
+          <div className="text-2xl font-mono animate-pulse" style={{ color: '#fe640b' }}>
+            [CLICK TO SHOOT]
+          </div>
+        </div>
+      )}
       
       {/* === SHOOTING TIMING BAR === */}
       <ShootingBar 

@@ -38,11 +38,11 @@ export const Scene3D = () => {
             
             if (yourFighter.position[2] < 0) {
             // You're at negative Z (-3) → Camera behind you at negative Z
-            newPosition = new THREE.Vector3(2, 2, 7);
+            newPosition = new THREE.Vector3(-2, 2, -7);
             console.log('📹 You are fighter at Z=-3, camera at Z=-7');
             } else {
             // You're at positive Z (3) → Camera behind you at positive Z
-            newPosition = new THREE.Vector3(2, 2, -7);
+            newPosition = new THREE.Vector3(2, 2, 7);
             console.log('📹 You are fighter at Z=+3, camera at Z=+7');
             }
         } else {
