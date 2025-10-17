@@ -22,18 +22,25 @@ export const GlobalStatusUI = () => {
   return (
     <div className="fixed top-4 left-4 z-40 flex flex-col gap-2 font-mono text-xs">
       {/* Connection Status */}
-      <div className="flex items-center gap-2 bg-black/80 border border-gray-700 px-3 py-1.5">
+      <div 
+        className="flex items-center gap-2 border-dashed-ascii px-3 py-1.5"
+        style={{ backgroundColor: '#dce0e8' }}
+      >
         <div 
-          className={`h-2 w-2 ${isConnected ? "animate-pulse bg-green-500" : "bg-red-500"}`} 
+          className={`h-2 w-2 ${isConnected ? "animate-pulse" : ""}`}
+          style={{ backgroundColor: isConnected ? '#40a02b' : '#d20f39' }}
         />
-        <span className={isConnected ? "text-green-500" : "text-red-500"}>
+        <span style={{ color: isConnected ? '#40a02b' : '#d20f39' }}>
           {isConnected ? "CONNECTED" : "OFFLINE"}
         </span>
       </div>
 
       {/* Game Status */}
-      <div className="bg-black/80 border border-gray-700 px-3 py-1.5">
-        <div className="text-yellow-400">
+      <div 
+        className="border-dashed-ascii px-3 py-1.5"
+        style={{ backgroundColor: '#dce0e8' }}
+      >
+        <div style={{ color: '#df8e1d' }}>
           {getGameStatus()}
         </div>
       </div>
