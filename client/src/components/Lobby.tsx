@@ -266,7 +266,7 @@ export const Lobby = () => {
 
         <main className="flex flex-col gap-4 p-4">
             <>
-              <PlayerTable players={fighters} title="// NEXT MATCH: FIGHTERS [TOP 4 BIDS]" color="text-red" />
+              <PlayerTable players={fighters} title="// NEXT MATCH: FIGHTERS [TOP 2 BIDS]" color="text-red" />
               <PlayerTable players={contenders} title="// AUCTION IN PROGRESS: CONTENDERS" color="text-teal" />
             </>
             {!connected && (
