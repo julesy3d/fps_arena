@@ -345,7 +345,7 @@ export const DuelUI = () => {
       
       // Set all fighters to armed state immediately
       fighters.forEach(f => {
-        useGameStore.getState().updateFighterAnimation(f.id, 'armed');
+        useGameStore.getState().updateFighterAnimation(f.id, 'draw');
       });
     };
 
@@ -398,7 +398,7 @@ export const DuelUI = () => {
         if (winnerData.isSplit) {
           // Draw → Both look defeated
           fighters.forEach(f => {
-            useGameStore.getState().updateFighterAnimation(f.id, 'defeat');
+            useGameStore.getState().updateFighterAnimation(f.id, 'death');
           });
         } else {
           // Winner celebrates, loser dies
