@@ -333,20 +333,24 @@ export const DuelUI = () => {
     // GONG! → Hide narrator, start draw phase
     const onGong = () => { 
       playGong();
-      stopCinematicIntro(); // Stop cinematic immediately when combat starts
+      stopCinematicIntro();
       
-      // Hide narrator if still showing
-      // (UnifiedMessageDisplay handles this via socket event)
-      
-      // Go straight to shooting (no draw phase)
-      setCanClick(true); 
-      setActionType('shoot'); 
-      setBarVisible(true);
-      
-      // Set all fighters to armed state immediately
+      // Play draw animation
       fighters.forEach(f => {
         useGameStore.getState().updateFighterAnimation(f.id, 'draw');
       });
+      
+      // After 500ms (or whatever draw animation length is), go to armed
+      setTimeout(() => {
+        fighters.forEach(f => {
+          useGameStore.getState().updateFighterAnimation(f.id, 'armed');
+        });
+      }, 500); // Adjust this to match your actual 'draw' animation duration
+      
+      // Enable shooting
+      setCanClick(true); 
+      setActionType('shoot'); 
+      setBarVisible(true);
     };
 
     // Start aiming phase
