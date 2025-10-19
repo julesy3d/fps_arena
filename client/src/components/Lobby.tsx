@@ -1,7 +1,7 @@
 "use client";
 
 import { useGameStore, Player } from "@/store/useGameStore";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { Transaction } from "@solana/web3.js";
 
@@ -31,22 +31,25 @@ const BetControls = ({
         step="1000"
         value={amount}
         onChange={(e) => setAmount(parseInt(e.target.value, 10) || 1000)}
-        className="w-24 bg-transparent text-center focus:outline-none blinking-cursor"
+        className="w-20 text-center text-xs focus:outline-none blinking-cursor px-1"
+        style={{ backgroundColor: '#dce0e8', color: '#24273a' }}
         disabled={isProcessing}
       />
       <button
         onClick={handleBet}
         disabled={isProcessing}
-        className="text-green-400 opacity-75 hover:opacity-100 disabled:text-gray-500"
+        className="opacity-75 hover:opacity-100 text-xs"
+        style={{ color: isProcessing ? '#8087a2' : '#40a02b' }}
       >
-        <span className="text-subtext0">[</span>BET<span className="text-subtext0">]</span>
+        <span style={{ color: '#8087a2' }}>[</span>BET<span style={{ color: '#8087a2' }}>]</span>
       </button>
       <button
         onClick={onCancel}
         disabled={isProcessing}
-        className="text-maroon opacity-75 hover:opacity-100 disabled:text-gray-500"
+        className="opacity-75 hover:opacity-100 text-xs"
+        style={{ color: isProcessing ? '#8087a2' : '#d20f39' }}
       >
-        <span className="text-subtext0">[</span>CANCEL<span className="text-subtext0">]</span>
+        <span style={{ color: '#8087a2' }}>[</span>CANCEL<span style={{ color: '#8087a2' }}>]</span>
       </button>
     </div>
   );
@@ -64,6 +67,11 @@ export const Lobby = () => {
     isProcessing: boolean;
     message: string;
   }>({ isProcessing: false, message: "" });
+
+  // Name editing state
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editedName, setEditedName] = useState("");
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => setHasMounted(true), []);
 
@@ -86,7 +94,7 @@ export const Lobby = () => {
   }, [players, selfId]);
 
   const sortedByBid = useMemo(() => {
-      return Object.values(players).sort((a, b) => (b.betAmount ?? 0) - (a.betAmount ?? 0));
+      return Object.values(players).sort((a, b) => (b.betAmount ?? 0) - (a.betAmount ?? 0) || (a.lastBetTimestamp || 0) - (b.lastBetTimestamp || 0));
   }, [players]);
 
   const fighters = sortedByBid.slice(0, 4).filter(p => p.betAmount > 0);
@@ -95,9 +103,9 @@ export const Lobby = () => {
     let others = sortedByBid.filter(p => !fighters.some(f => f.id === p.id));
     if (self && !fighters.some(f => f.id === self.id)) {
         others = others.filter(p => p.id !== self.id);
-        return [self, ...others];
+        return [self, ...others].slice(0, 100);
     }
-    return others;
+    return others.slice(0, 100);
   }, [sortedByBid, fighters, self]);
 
   const handleBet = async (amount: number) => {
@@ -154,11 +162,40 @@ export const Lobby = () => {
       socket.off("lobby:betFailed", handleBetFailed);
     };
   }, [socket, signTransaction]);
+
+  // Name editing handlers
+  const handleNameClick = () => {
+    if (!self) return;
+    setIsEditingName(true);
+    setEditedName(self.name);
+  };
+
+  const handleNameSubmit = () => {
+    if (socket && editedName.trim() && editedName.trim() !== self?.name) {
+      socket.emit("player:setName", editedName.trim());
+    }
+    setIsEditingName(false);
+  };
+
+  const handleNameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleNameSubmit();
+    } else if (e.key === 'Escape') {
+      setIsEditingName(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isEditingName && nameInputRef.current) {
+      nameInputRef.current.focus();
+      nameInputRef.current.select();
+    }
+  }, [isEditingName]);
   
   const renderBidCell = (player: Player) => {
     const isSelf = player.id === selfId;
     if (!isSelf) {
-        return player.betAmount > 0 ? player.betAmount : 'SPECTATING';
+        return <span style={{ color: '#6c6f85' }}>{player.betAmount > 0 ? player.betAmount : 'SPECTATING'}</span>;
     }
     if (isBettingUiActive) {
         return (
@@ -175,13 +212,14 @@ export const Lobby = () => {
     }
     if (player.betAmount > 0) {
         return (
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex items-center justify-end gap-2" style={{ color: '#24273a' }}>
             <span>{player.betAmount}</span> 
             <button 
               onClick={() => setIsBettingUiActive(true)} 
-              className="text-yellow-400 opacity-75 hover:opacity-100"
+              className="opacity-75 hover:opacity-100 text-xs"
+              style={{ color: '#df8e1d' }}
             >
-              <span className="text-subtext0">[</span>RAISE<span className="text-subtext0">]</span>
+              <span style={{ color: '#8087a2' }}>[</span>RAISE<span style={{ color: '#8087a2' }}>]</span>
             </button>
           </div>
         );
@@ -189,17 +227,18 @@ export const Lobby = () => {
     return (
       <button 
         onClick={() => setIsBettingUiActive(true)} 
-        className="w-full text-center text-green-400 opacity-75 hover:opacity-100"
+        className="w-full text-right opacity-75 hover:opacity-100 text-xs whitespace-nowrap"
+        style={{ color: '#40a02b' }}
       >
-        <span className="text-subtext0">[</span> PLACE A BID TO COMPETE <span className="text-subtext0">]</span>
+        <span style={{ color: '#8087a2' }}>[</span>BET TO PLAY<span style={{ color: '#8087a2' }}>]</span>
       </button>
     );
   }
 
   const PlayerTable = ({ players, title, color }: { players: Player[], title: string, color: string }) => (
     <div role="grid">
-      <h3 className={`mb-2 text-lg font-semibold ${color} typing-effect`}>{title}</h3>
-      <div className="text-xs text-subtext0" role="row">
+      <h3 className="mb-2 text-base font-semibold" style={{ color }}>{title}</h3>
+      <div className="text-xs" style={{ color: '#8087a2' }} role="row">
         <div className="grid grid-cols-12 gap-2 p-2" role="rowheader">
           <div className="col-span-1 text-center" role="columnheader">RANK</div>
           <div className="col-span-4" role="columnheader">NAME</div>
@@ -212,24 +251,79 @@ export const Lobby = () => {
       </div>
       <div className="hr-dashed" role="presentation" />
       <div role="rowgroup">
-        {players.map(p => <PlayerRow key={p.id} player={p} />)}
+        {players.length === 0 ? (
+          <div className="p-4 text-center text-xs italic" style={{ color: '#8087a2' }}>
+            No active bidders yet. Place a bet to enter the arena!
+          </div>
+        ) : (
+          players.map(p => <PlayerRow key={p.id} player={p} />)
+        )}
       </div>
     </div>
   );
 
   const PlayerRow = ({ player }: { player: Player }) => {
     const rank = playerRanks.get(player.id);
+    const isSelf = player.id === selfId;
+    
     return (
-      <div className={`grid grid-cols-12 gap-2 p-2 ${player.id === selfId ? "bg-surface1" : ""}`} role="row">
-        <div className="col-span-1 text-center text-subtext0" role="gridcell">{rank ? `#${rank}` : '-'}</div>
-        <div className="col-span-4" role="gridcell">{player.name}</div>
-        <div className="col-span-1 text-center" role="gridcell">{player.stats?.kills ?? 0}</div>
-        <div className="col-span-1 text-center" role="gridcell">{player.stats?.deaths ?? 0}</div>
-        <div className="col-span-1 text-center" role="gridcell">{player.stats?.totalGamesPlayed ?? 0}</div>
-        <div className={`col-span-2 text-right ${(player.stats?.netWinnings ?? 0) > 0 ? 'text-green' : 'text-subtext0'}`} role="gridcell">
+      <div 
+        className="grid grid-cols-12 gap-2 p-2 text-xs"
+        style={{ 
+          backgroundColor: isSelf ? '#e6e9ef' : 'transparent',
+          color: isSelf ? '#24273a' : '#4c4f69'
+        }}
+        role="row"
+      >
+        <div className="col-span-1 text-center" style={{ color: '#8087a2' }} role="gridcell">
+          {rank ? `#${rank}` : '-'}
+        </div>
+        <div className="col-span-4" role="gridcell">
+          {isSelf && isEditingName ? (
+            <input
+              ref={nameInputRef}
+              type="text"
+              value={editedName}
+              onChange={(e) => setEditedName(e.target.value)}
+              onBlur={handleNameSubmit}
+              onKeyDown={handleNameKeyDown}
+              className="border-b focus:outline-none w-full text-xs px-1"
+              style={{ 
+                backgroundColor: '#dce0e8', 
+                color: '#24273a',
+                borderColor: '#b7bdf8'
+              }}
+              maxLength={16}
+            />
+          ) : (
+            <span 
+              onClick={isSelf ? handleNameClick : undefined}
+              className={isSelf ? "cursor-pointer hover:opacity-80" : ""}
+            >
+              {player.name}
+              {isSelf && <span style={{ color: '#8087a2' }} className="ml-1">(YOU)</span>}
+            </span>
+          )}
+        </div>
+        <div className="col-span-1 text-center" style={{ color: '#5c5f77' }} role="gridcell">
+          {player.stats?.kills ?? 0}
+        </div>
+        <div className="col-span-1 text-center" style={{ color: '#5c5f77' }} role="gridcell">
+          {player.stats?.deaths ?? 0}
+        </div>
+        <div className="col-span-1 text-center" style={{ color: '#5c5f77' }} role="gridcell">
+          {player.stats?.totalGamesPlayed ?? 0}
+        </div>
+        <div 
+          className="col-span-2 text-right"
+          style={{ color: (player.stats?.netWinnings ?? 0) > 0 ? '#40a02b' : '#8087a2' }}
+          role="gridcell"
+        >
           {player.stats?.netWinnings ?? 0}
         </div>
-        <div className="col-span-2 text-right" role="gridcell">{renderBidCell(player)}</div>
+        <div className="col-span-2 text-right" role="gridcell">
+          {renderBidCell(player)}
+        </div>
       </div>
     );
   };
@@ -237,43 +331,73 @@ export const Lobby = () => {
   if (!hasMounted) return null;
 
   return (
-    <div className="fixed inset-0 z-20 flex flex-col items-center justify-end pb-16 bg-base p-4">      {betStatus.isProcessing && (
+    <div className="fixed inset-0 z-20 flex flex-col items-center justify-end pb-16 p-4" style={{ backgroundColor: '#eff1f5', color: '#24273a' }}>
+      {betStatus.isProcessing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-          <div className="border border-yellow-400 bg-black p-8 text-center">
-            <div className="mb-4 text-xl text-yellow-400">{betStatus.message}</div>
+          <div className="border p-8 text-center" style={{ borderColor: '#b7bdf8', backgroundColor: '#fff' }}>
+            <div className="mb-4 text-xl" style={{ color: '#b7bdf8' }}>{betStatus.message}</div>
             <div className="animate-pulse text-4xl">⏳</div>
           </div>
         </div>
       )}
 
-      <div className="flex w-full max-w-7xl flex-col bg-crust border-dashed-ascii">
+      <div className="flex w-full max-w-[90%] flex-col border-dashed-ascii" style={{ backgroundColor: '#f4dbd6' }}>
         <header className="flex items-center justify-between p-3">
           {lobbyCountdown !== null ? (
-            <div className="font-title text-3xl text-yellow">
+            <div className="font-title text-2xl" style={{ color: '#b7bdf8' }}>
               {lobbyCountdown > 0 ? `T-${lobbyCountdown.toString().padStart(2, "0")}` : "FINALIZING..."}
             </div>
           ) : gamePhase === "IN_ROUND" ? (
-            <div className="font-title text-2xl text-red">
+            <div className="font-title text-xl" style={{ color: '#d20f39' }}>
               // DUEL IN PROGRESS - PLACE BETS FOR NEXT ROUND
             </div>
           ) : gamePhase === "POST_ROUND" ? (
-            <div className="font-title text-2xl text-green">
+            <div className="font-title text-xl" style={{ color: '#40a02b' }}>
               // ROUND COMPLETE - NEXT DUEL SOON
             </div>
-          ) : null}
+          ) : (
+            <div className="font-title text-xl" style={{ color: '#8087a2' }}>
+              // WAITING FOR DUELISTS
+            </div>
+          )}
         </header>
         <div className="hr-dashed" role="presentation" />
 
         <main className="flex flex-col gap-4 p-4">
-            <>
-              <PlayerTable players={fighters} title="// NEXT MATCH: FIGHTERS [TOP 2 BIDS]" color="text-red" />
-              <PlayerTable players={contenders} title="// AUCTION IN PROGRESS: CONTENDERS" color="text-teal" />
-            </>
-            {!connected && (
-                <div className="text-center text-subtext0 mt-4">
-                    <p>Connect your wallet to participate in the auction.</p>
+          <PlayerTable players={fighters} title="// NEXT MATCH: FIGHTERS [TOP 2 BIDS]" color="#d20f39" />
+          
+          <div>
+            <h3 className="mb-2 text-base font-semibold" style={{ color: '#b7bdf8' }}>
+              // AUCTION IN PROGRESS: CONTENDERS
+            </h3>
+            <div className="text-xs" style={{ color: '#8087a2' }} role="row">
+              <div className="grid grid-cols-12 gap-2 p-2" role="rowheader">
+                <div className="col-span-1 text-center" role="columnheader">RANK</div>
+                <div className="col-span-4" role="columnheader">NAME</div>
+                <div className="col-span-1 text-center" role="columnheader">KILLS</div>
+                <div className="col-span-1 text-center" role="columnheader">DEATHS</div>
+                <div className="col-span-1 text-center" role="columnheader">ROUNDS</div>
+                <div className="col-span-2 text-right" role="columnheader">NET GAIN</div>
+                <div className="col-span-2 text-right" role="columnheader">CURRENT BID</div>
+              </div>
+            </div>
+            <div className="hr-dashed" role="presentation" />
+            <div className="max-h-[300px] overflow-y-auto" role="rowgroup">
+              {contenders.length === 0 ? (
+                <div className="p-4 text-center text-xs italic" style={{ color: '#6e738d' }}>
+                  Waiting for contenders to join...
                 </div>
-            )}
+              ) : (
+                contenders.map(p => <PlayerRow key={p.id} player={p} />)
+              )}
+            </div>
+          </div>
+
+          {!connected && (
+            <div className="text-center mt-4 text-xs" style={{ color: '#6e738d' }}>
+              <p>Connect your wallet to participate in the auction.</p>
+            </div>
+          )}
         </main>
       </div>
     </div>

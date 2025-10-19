@@ -4,8 +4,6 @@
 
 body {
   font-family: 'IBM Plex Mono', monospace;
-  background-color: #eff1f5; /* base */
-  color: #4c4f69; /* text */
   overflow: hidden;
 }
 
