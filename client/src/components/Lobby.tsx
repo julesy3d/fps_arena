@@ -31,25 +31,22 @@ const BetControls = ({
         step="1000"
         value={amount}
         onChange={(e) => setAmount(parseInt(e.target.value, 10) || 1000)}
-        className="w-20 text-center text-xs focus:outline-none blinking-cursor px-1"
-        style={{ backgroundColor: '#dce0e8', color: '#24273a' }}
+        className="w-20 text-center text-xs focus:outline-none blinking-cursor px-1 bg-overlay text-text"
         disabled={isProcessing}
       />
       <button
         onClick={handleBet}
         disabled={isProcessing}
-        className="opacity-75 hover:opacity-100 text-xs"
-        style={{ color: isProcessing ? '#8087a2' : '#40a02b' }}
+        className={`opacity-75 hover:opacity-100 text-xs ${isProcessing ? 'text-subtext1' : 'text-success'}`}
       >
-        <span style={{ color: '#8087a2' }}>[</span>BET<span style={{ color: '#8087a2' }}>]</span>
+        <span className="text-subtext1">[</span>BET<span className="text-subtext1">]</span>
       </button>
       <button
         onClick={onCancel}
         disabled={isProcessing}
-        className="opacity-75 hover:opacity-100 text-xs"
-        style={{ color: isProcessing ? '#8087a2' : '#d20f39' }}
+        className={`opacity-75 hover:opacity-100 text-xs ${isProcessing ? 'text-subtext1' : 'text-error'}`}
       >
-        <span style={{ color: '#8087a2' }}>[</span>CANCEL<span style={{ color: '#8087a2' }}>]</span>
+        <span className="text-subtext1">[</span>CANCEL<span className="text-subtext1">]</span>
       </button>
     </div>
   );
@@ -195,7 +192,7 @@ export const Lobby = () => {
   const renderBidCell = (player: Player) => {
     const isSelf = player.id === selfId;
     if (!isSelf) {
-        return <span style={{ color: '#6c6f85' }}>{player.betAmount > 0 ? player.betAmount : 'SPECTATING'}</span>;
+        return <span className="text-subtext0">{player.betAmount > 0 ? player.betAmount : 'SPECTATING'}</span>;
     }
     if (isBettingUiActive) {
         return (
@@ -212,14 +209,13 @@ export const Lobby = () => {
     }
     if (player.betAmount > 0) {
         return (
-          <div className="flex items-center justify-end gap-2" style={{ color: '#24273a' }}>
+          <div className="flex items-center justify-end gap-2 text-text">
             <span>{player.betAmount}</span> 
             <button 
               onClick={() => setIsBettingUiActive(true)} 
-              className="opacity-75 hover:opacity-100 text-xs"
-              style={{ color: '#df8e1d' }}
+              className="opacity-75 hover:opacity-100 text-xs text-warning"
             >
-              <span style={{ color: '#8087a2' }}>[</span>RAISE<span style={{ color: '#8087a2' }}>]</span>
+              <span className="text-subtext1">[</span>RAISE<span className="text-subtext1">]</span>
             </button>
           </div>
         );
@@ -227,18 +223,17 @@ export const Lobby = () => {
     return (
       <button 
         onClick={() => setIsBettingUiActive(true)} 
-        className="w-full text-right opacity-75 hover:opacity-100 text-xs whitespace-nowrap"
-        style={{ color: '#40a02b' }}
+        className="w-full text-right opacity-75 hover:opacity-100 text-xs whitespace-nowrap text-success"
       >
-        <span style={{ color: '#8087a2' }}>[</span>BET TO PLAY<span style={{ color: '#8087a2' }}>]</span>
+        <span className="text-subtext1">[</span>BET TO PLAY<span className="text-subtext1">]</span>
       </button>
     );
   }
 
-  const PlayerTable = ({ players, title, color }: { players: Player[], title: string, color: string }) => (
+  const PlayerTable = ({ players, title, titleClassName }: { players: Player[], title: string, titleClassName: string }) => (
     <div role="grid">
-      <h3 className="mb-2 text-base font-semibold" style={{ color }}>{title}</h3>
-      <div className="text-xs" style={{ color: '#8087a2' }} role="row">
+      <h3 className={`mb-2 text-base font-semibold ${titleClassName}`}>{title}</h3>
+      <div className="text-xs text-subtext1" role="row">
         <div className="grid grid-cols-12 gap-2 p-2" role="rowheader">
           <div className="col-span-1 text-center" role="columnheader">RANK</div>
           <div className="col-span-4" role="columnheader">NAME</div>
@@ -252,7 +247,7 @@ export const Lobby = () => {
       <div className="hr-dashed" role="presentation" />
       <div role="rowgroup">
         {players.length === 0 ? (
-          <div className="p-4 text-center text-xs italic" style={{ color: '#8087a2' }}>
+          <div className="p-4 text-center text-xs italic text-subtext1">
             No active bidders yet. Place a bet to enter the arena!
           </div>
         ) : (
@@ -268,14 +263,10 @@ export const Lobby = () => {
     
     return (
       <div 
-        className="grid grid-cols-12 gap-2 p-2 text-xs"
-        style={{ 
-          backgroundColor: isSelf ? '#e6e9ef' : 'transparent',
-          color: isSelf ? '#24273a' : '#4c4f69'
-        }}
+        className={`grid grid-cols-12 gap-2 p-2 text-xs ${isSelf ? 'bg-surface text-text' : 'text-subtext0'}`}
         role="row"
       >
-        <div className="col-span-1 text-center" style={{ color: '#8087a2' }} role="gridcell">
+        <div className="col-span-1 text-center text-subtext1" role="gridcell">
           {rank ? `#${rank}` : '-'}
         </div>
         <div className="col-span-4" role="gridcell">
@@ -287,12 +278,7 @@ export const Lobby = () => {
               onChange={(e) => setEditedName(e.target.value)}
               onBlur={handleNameSubmit}
               onKeyDown={handleNameKeyDown}
-              className="border-b focus:outline-none w-full text-xs px-1"
-              style={{ 
-                backgroundColor: '#dce0e8', 
-                color: '#24273a',
-                borderColor: '#b7bdf8'
-              }}
+              className="w-full border-b border-lavender bg-overlay px-1 text-xs text-text focus:outline-none"
               maxLength={16}
             />
           ) : (
@@ -301,22 +287,21 @@ export const Lobby = () => {
               className={isSelf ? "cursor-pointer hover:opacity-80" : ""}
             >
               {player.name}
-              {isSelf && <span style={{ color: '#8087a2' }} className="ml-1">(YOU)</span>}
+              {isSelf && <span className="ml-1 text-subtext1">(YOU)</span>}
             </span>
           )}
         </div>
-        <div className="col-span-1 text-center" style={{ color: '#5c5f77' }} role="gridcell">
+        <div className="col-span-1 text-center text-subtext0" role="gridcell">
           {player.stats?.kills ?? 0}
         </div>
-        <div className="col-span-1 text-center" style={{ color: '#5c5f77' }} role="gridcell">
+        <div className="col-span-1 text-center text-subtext0" role="gridcell">
           {player.stats?.deaths ?? 0}
         </div>
-        <div className="col-span-1 text-center" style={{ color: '#5c5f77' }} role="gridcell">
+        <div className="col-span-1 text-center text-subtext0" role="gridcell">
           {player.stats?.totalGamesPlayed ?? 0}
         </div>
         <div 
-          className="col-span-2 text-right"
-          style={{ color: (player.stats?.netWinnings ?? 0) > 0 ? '#40a02b' : '#8087a2' }}
+          className={`col-span-2 text-right ${(player.stats?.netWinnings ?? 0) > 0 ? 'text-success' : 'text-subtext1'}`}
           role="gridcell"
         >
           {player.stats?.netWinnings ?? 0}
@@ -331,32 +316,32 @@ export const Lobby = () => {
   if (!hasMounted) return null;
 
   return (
-    <div className="fixed inset-0 z-20 flex flex-col items-center justify-end pb-16 p-4" style={{ backgroundColor: '#eff1f5', color: '#24273a' }}>
+    <div className="fixed inset-0 z-20 flex flex-col items-center justify-end bg-base p-4 pb-16 text-text">
       {betStatus.isProcessing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-          <div className="border p-8 text-center" style={{ borderColor: '#b7bdf8', backgroundColor: '#fff' }}>
-            <div className="mb-4 text-xl" style={{ color: '#b7bdf8' }}>{betStatus.message}</div>
+          <div className="border border-lavender bg-base p-8 text-center">
+            <div className="mb-4 text-xl text-lavender">{betStatus.message}</div>
             <div className="animate-pulse text-4xl">⏳</div>
           </div>
         </div>
       )}
 
-      <div className="flex w-full max-w-[90%] flex-col border-dashed-ascii" style={{ backgroundColor: '#f4dbd6' }}>
+      <div className="flex w-full max-w-[90%] flex-col border-dashed-ascii bg-surface">
         <header className="flex items-center justify-between p-3">
           {lobbyCountdown !== null ? (
-            <div className="font-title text-2xl" style={{ color: '#b7bdf8' }}>
+            <div className="font-title text-2xl text-lavender">
               {lobbyCountdown > 0 ? `T-${lobbyCountdown.toString().padStart(2, "0")}` : "FINALIZING..."}
             </div>
           ) : gamePhase === "IN_ROUND" ? (
-            <div className="font-title text-xl" style={{ color: '#d20f39' }}>
+            <div className="font-title text-xl text-rose">
               // DUEL IN PROGRESS - PLACE BETS FOR NEXT ROUND
             </div>
           ) : gamePhase === "POST_ROUND" ? (
-            <div className="font-title text-xl" style={{ color: '#40a02b' }}>
+            <div className="font-title text-xl text-sage">
               // ROUND COMPLETE - NEXT DUEL SOON
             </div>
           ) : (
-            <div className="font-title text-xl" style={{ color: '#8087a2' }}>
+            <div className="font-title text-xl text-subtext1">
               // WAITING FOR DUELISTS
             </div>
           )}
@@ -364,13 +349,13 @@ export const Lobby = () => {
         <div className="hr-dashed" role="presentation" />
 
         <main className="flex flex-col gap-4 p-4">
-          <PlayerTable players={fighters} title="// NEXT MATCH: FIGHTERS [TOP 2 BIDS]" color="#d20f39" />
+          <PlayerTable players={fighters} title="// NEXT MATCH: FIGHTERS [TOP 2 BIDS]" titleClassName="text-rose" />
           
           <div>
-            <h3 className="mb-2 text-base font-semibold" style={{ color: '#b7bdf8' }}>
+            <h3 className="mb-2 text-base font-semibold text-lavender">
               // AUCTION IN PROGRESS: CONTENDERS
             </h3>
-            <div className="text-xs" style={{ color: '#8087a2' }} role="row">
+            <div className="text-xs text-subtext1" role="row">
               <div className="grid grid-cols-12 gap-2 p-2" role="rowheader">
                 <div className="col-span-1 text-center" role="columnheader">RANK</div>
                 <div className="col-span-4" role="columnheader">NAME</div>
@@ -384,7 +369,7 @@ export const Lobby = () => {
             <div className="hr-dashed" role="presentation" />
             <div className="max-h-[300px] overflow-y-auto" role="rowgroup">
               {contenders.length === 0 ? (
-                <div className="p-4 text-center text-xs italic" style={{ color: '#6e738d' }}>
+                <div className="p-4 text-center text-xs italic text-subtext0">
                   Waiting for contenders to join...
                 </div>
               ) : (
@@ -394,7 +379,7 @@ export const Lobby = () => {
           </div>
 
           {!connected && (
-            <div className="text-center mt-4 text-xs" style={{ color: '#6e738d' }}>
+            <div className="mt-4 text-center text-xs text-subtext0">
               <p>Connect your wallet to participate in the auction.</p>
             </div>
           )}
