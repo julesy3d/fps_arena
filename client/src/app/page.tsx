@@ -50,8 +50,7 @@ export default function Home() {
 
   useEffect(() => {
     setMounted(true);
-    connectSocket();
-  }, [connectSocket]);
+  }, []);
 
   useEffect(() => {
     const checkWallet = setInterval(() => {
