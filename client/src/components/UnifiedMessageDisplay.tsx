@@ -197,15 +197,10 @@ export const UnifiedMessageDisplay = () => {
     <div className="fixed top-0 left-0 right-0 z-30 flex justify-center pt-20 pointer-events-none">
       <div
         className={`
-          text-center px-16 py-4 font-normal italic max-w-2xl
-          ${isDramatic ? 'text-4xl' : 'text-2xl'}
+          max-w-2xl px-16 py-4 text-center font-mono italic tracking-wider
+          ${isDramatic ? 'text-4xl text-rose' : 'text-2xl text-subtext0'}
           ${isVisible ? 'block' : 'hidden'}
         `}
-        style={{
-          color: isDramatic ? '#d20f39' : '#6c6f85',
-          fontFamily: 'IBM Plex Mono, monospace',
-          letterSpacing: '0.05em'
-        }}
       >
         {currentMessage}
       </div>

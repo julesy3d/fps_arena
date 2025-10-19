@@ -138,29 +138,25 @@ const ShootingBar = ({
     <div className="fixed bottom-8 right-8 z-20 flex flex-col items-center gap-2">
       {/* ASCII Bar */}
       <div 
-        className="border-dashed-ascii font-mono text-sm leading-tight p-2"
-        style={{ 
-          backgroundColor: '#dce0e8', // --crust
-          color: '#7c7f93' // --overlay2
-        }}
+        className="border-dashed-ascii font-mono text-sm leading-tight p-2 bg-overlay text-subtext1"
       >
         {Array.from({ length: rows }).map((_, i) => {
           const isBar = i === barPositionRow;
           const isInTargetZone = i >= targetZoneStart && i <= targetZoneEnd;
           
           let char = '│';
-          let color = '#7c7f93'; // --overlay2 (default)
+          let className = 'text-subtext1'; // Default color
           
           if (isBar) {
             char = '█';
-            color = '#d20f39'; // --red (moving bar)
+            className = 'text-rose'; // Moving bar
           } else if (isInTargetZone) {
             char = '░';
-            color = '#40a02b'; // --green (target zone)
+            className = 'text-sage'; // Target zone
           }
           
           return (
-            <div key={i} style={{ color }}>
+            <div key={i} className={className}>
               {char}
             </div>
           );
@@ -169,8 +165,7 @@ const ShootingBar = ({
       
       {/* Percentage indicator OR "NOW!" */}
       <div 
-        className="font-mono text-sm font-bold"
-        style={{ color: barPosition >= 0.60 && barPosition <= 0.80 ? '#40a02b' : '#7c7f93' }}
+        className={`font-mono text-sm font-bold ${barPosition >= 0.60 && barPosition <= 0.80 ? 'text-sage' : 'text-subtext1'}`}
       >
         {barPosition >= 0.60 && barPosition <= 0.80 ? 'NOW!' : `${(barPosition * 100).toFixed(0)}%`}
       </div>
@@ -469,9 +464,9 @@ export const DuelUI = () => {
     <div className="absolute inset-0 cursor-crosshair" onClick={handleClick}>
       {/* === WAITING FOR OPPONENT === */}
       {isWaitingForOpponent && (
-        <div className="fixed inset-0 z-30 flex items-center justify-center" style={{ backgroundColor: 'rgba(220, 224, 232, 0.9)' }}>
-          <div className="border-dashed-ascii p-6" style={{ backgroundColor: '#eff1f5' }}>
-            <h1 className="text-2xl font-normal font-mono" style={{ color: '#6c6f85' }}>
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-base/90">
+          <div className="border-dashed-ascii p-6 bg-surface">
+            <h1 className="text-2xl font-normal font-mono text-subtext0">
               WAITING FOR OPPONENT...
             </h1>
           </div>
@@ -480,8 +475,8 @@ export const DuelUI = () => {
 
       {/* === AI MODE INDICATOR === */}
       {isAIMode && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-20 border-dashed-ascii px-4 py-2" style={{ backgroundColor: '#dce0e8' }}>
-          <span className="font-mono text-sm font-normal" style={{ color: '#d20f39' }}>
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-20 border-dashed-ascii px-4 py-2 bg-overlay">
+          <span className="font-mono text-sm font-normal text-rose">
             [🤖 AI OPPONENT ACTIVE]
           </span>
         </div>
@@ -490,7 +485,7 @@ export const DuelUI = () => {
       {/* === CLICK TO SHOOT PROMPT === */}
       {canClick && actionType === 'shoot' && (
         <div className="fixed bottom-1/4 left-1/2 -translate-x-1/2 z-10">
-          <div className="text-2xl font-mono font-normal" style={{ color: '#fe640b' }}>
+          <div className="text-2xl font-mono font-normal text-peach">
             [CLICK TO SHOOT]
           </div>
         </div>
