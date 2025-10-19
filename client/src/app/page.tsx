@@ -190,7 +190,7 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="fixed bottom-0 left-0 right-0 border-t border-gray-700 bg-black/80 p-1 text-center text-xs text-gray-400">
-        Top 2 bidders fight at high noon. Winner takes 90% of the pot, 10% burns.
+        Top 2 bidders fight. Winner takes 90% of the pot, 10% tax. Press [TAB] to bet.
       </footer>
     </main>
   );

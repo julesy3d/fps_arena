@@ -234,15 +234,15 @@ export const Lobby = () => {
     <div role="grid">
       <h3 className={`mb-2 text-base font-semibold ${titleClassName}`}>{title}</h3>
       <div className="text-xs text-subtext1" role="row">
-        <div className="grid grid-cols-12 gap-2 p-2" role="rowheader">
-          <div className="col-span-1 text-center" role="columnheader">RANK</div>
-          <div className="col-span-4" role="columnheader">NAME</div>
-          <div className="col-span-1 text-center" role="columnheader">KILLS</div>
-          <div className="col-span-1 text-center" role="columnheader">DEATHS</div>
-          <div className="col-span-1 text-center" role="columnheader">ROUNDS</div>
-          <div className="col-span-2 text-right" role="columnheader">NET GAIN</div>
-          <div className="col-span-2 text-right" role="columnheader">CURRENT BID</div>
-        </div>
+              <div className="grid grid-cols-12 gap-2 p-2" role="rowheader">
+                <div className="col-span-1 text-center" role="columnheader">RANK</div>
+                <div className="col-span-3" role="columnheader">NAME</div>
+                <div className="col-span-1 text-center" role="columnheader">KILLS</div>
+                <div className="col-span-1 text-center" role="columnheader">DEATHS</div>
+                <div className="col-span-1 text-center" role="columnheader">ROUNDS</div>
+                <div className="col-span-1 text-right" role="columnheader">NET GAIN</div>
+                <div className="col-span-4 text-right" role="columnheader">CURRENT BID</div>
+              </div>
       </div>
       <div className="hr-dashed" role="presentation" />
       <div role="rowgroup">
@@ -262,14 +262,14 @@ export const Lobby = () => {
     const isSelf = player.id === selfId;
     
     return (
-      <div 
+      <div
         className={`grid grid-cols-12 gap-2 p-2 text-xs ${isSelf ? 'bg-surface text-text' : 'text-subtext0'}`}
         role="row"
       >
         <div className="col-span-1 text-center text-subtext1" role="gridcell">
           {rank ? `#${rank}` : '-'}
         </div>
-        <div className="col-span-4" role="gridcell">
+        <div className="col-span-3" role="gridcell">
           {isSelf && isEditingName ? (
             <input
               ref={nameInputRef}
@@ -282,7 +282,7 @@ export const Lobby = () => {
               maxLength={16}
             />
           ) : (
-            <span 
+            <span
               onClick={isSelf ? handleNameClick : undefined}
               className={isSelf ? "cursor-pointer hover:opacity-80" : ""}
             >
@@ -300,13 +300,13 @@ export const Lobby = () => {
         <div className="col-span-1 text-center text-subtext0" role="gridcell">
           {player.stats?.totalGamesPlayed ?? 0}
         </div>
-        <div 
-          className={`col-span-2 text-right ${(player.stats?.netWinnings ?? 0) > 0 ? 'text-success' : 'text-subtext1'}`}
+        <div
+          className={`col-span-1 text-right ${(player.stats?.netWinnings ?? 0) > 0 ? 'text-success' : 'text-subtext1'}`}
           role="gridcell"
         >
           {player.stats?.netWinnings ?? 0}
         </div>
-        <div className="col-span-2 text-right" role="gridcell">
+        <div className="col-span-4 text-right" role="gridcell">
           {renderBidCell(player)}
         </div>
       </div>
@@ -326,7 +326,7 @@ export const Lobby = () => {
         </div>
       )}
 
-      <div className="flex w-full max-w-[90%] flex-col border-dashed-ascii bg-surface">
+      <div className="flex w-full max-w-[90%] flex-col border-dashed-ascii bg-ascii-shade">
         <header className="flex items-center justify-between p-3">
           {lobbyCountdown !== null ? (
             <div className="font-title text-2xl text-lavender">
@@ -349,21 +349,21 @@ export const Lobby = () => {
         <div className="hr-dashed" role="presentation" />
 
         <main className="flex flex-col gap-4 p-4">
-          <PlayerTable players={fighters} title="// NEXT MATCH: FIGHTERS [TOP 2 BIDS]" titleClassName="text-rose" />
+          <PlayerTable players={fighters} title="// NEXT MATCH: FIGHTERS [TOP 2 BIDS]" titleClassName="text-subtext1" />
           
           <div>
-            <h3 className="mb-2 text-base font-semibold text-lavender">
+            <h3 className="mb-2 text-base font-semibold text-subtext1">
               // AUCTION IN PROGRESS: CONTENDERS
             </h3>
             <div className="text-xs text-subtext1" role="row">
               <div className="grid grid-cols-12 gap-2 p-2" role="rowheader">
                 <div className="col-span-1 text-center" role="columnheader">RANK</div>
-                <div className="col-span-4" role="columnheader">NAME</div>
+                <div className="col-span-3" role="columnheader">NAME</div>
                 <div className="col-span-1 text-center" role="columnheader">KILLS</div>
                 <div className="col-span-1 text-center" role="columnheader">DEATHS</div>
                 <div className="col-span-1 text-center" role="columnheader">ROUNDS</div>
-                <div className="col-span-2 text-right" role="columnheader">NET GAIN</div>
-                <div className="col-span-2 text-right" role="columnheader">CURRENT BID</div>
+                <div className="col-span-1 text-right" role="columnheader">NET GAIN</div>
+                <div className="col-span-4 text-right" role="columnheader">CURRENT BID</div>
               </div>
             </div>
             <div className="hr-dashed" role="presentation" />

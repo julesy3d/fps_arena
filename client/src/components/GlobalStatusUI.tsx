@@ -22,7 +22,7 @@ export const GlobalStatusUI = () => {
   return (
     <div className="fixed top-4 left-4 z-40 flex flex-col gap-2 font-mono text-xs">
       {/* Connection Status */}
-      <div className="flex items-center gap-2 border-dashed-ascii bg-overlay px-3 py-1.5">
+    <div className="flex items-center gap-2 border-dashed-ascii bg-ascii-shade px-3 py-1.5">
         <div 
           className={`h-2 w-2 ${isConnected ? "animate-pulse bg-success" : "bg-error"}`}
         />
@@ -32,7 +32,7 @@ export const GlobalStatusUI = () => {
       </div>
 
       {/* Game Status */}
-      <div className="border-dashed-ascii bg-overlay px-3 py-1.5">
+      <div className="border-dashed-ascii bg-ascii-shade px-3 py-1.5">
         <div className="text-warning">
           {getGameStatus()}
         </div>

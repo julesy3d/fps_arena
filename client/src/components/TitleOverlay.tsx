@@ -26,7 +26,7 @@ export const TitleOverlay = ({ onHover }: TitleOverlayProps) => {
       >
         {/* ASCII Title */}
         <div className="cursor-pointer transition-opacity duration-300 group-hover:opacity-0">
-          <pre className="text-center text-peach text-[10px] leading-tight">
+          <pre className="text-center text-text text-[10px] leading-tight">
 {`
  ███████████     █████     █████       ███     █████         █████    ███████████      █████████    █████████ 
 ░░███░░░░░███  ███░░░███  ░░███       ██████  ░░███        ███░░░███ ░█░░░███░░░█     ███░░░░░███  ███░░░░░███
@@ -42,7 +42,7 @@ export const TitleOverlay = ({ onHover }: TitleOverlayProps) => {
 
         {/* Hover Content */}
         <div className="absolute top-0 left-0 w-full opacity-0 transition-opacity duration-300 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto">
-          <div className="border-dashed-ascii bg-surface p-4">
+          <div className="border-dashed-ascii bg-ascii-shade p-4">
             <h2 className="text-lg uppercase tracking-widest text-amber">
               // Auction & Match Rules
             </h2>
