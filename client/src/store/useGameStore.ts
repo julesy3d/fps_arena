@@ -12,7 +12,7 @@ export interface Player {
   position: [number, number, number];
   rotation: number;
   health?: number;
-  animationState?: 'idle' | 'armed' | 'shooting' | 'dodging' | 'death' | 'victory' | 'defeat';
+  animationState?: 'idle' | 'draw' | 'armed' | 'shooting' | 'dodging' | 'death' | 'victory';
 
   stats?: {
     kills: number;
