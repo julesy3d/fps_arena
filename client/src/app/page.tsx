@@ -130,7 +130,7 @@ export default function Home() {
               characters=" .:-+*=%@#"
               color={false}
               invert={false}
-              resolution={0.2}
+              resolution={0.25}
             />
             {/* Dynamic scene that switches based on gamePhase */}
             <Scene3D />

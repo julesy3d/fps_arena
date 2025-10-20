@@ -357,10 +357,9 @@ const handleShoot = (socketId) => {
 // DUEL: EVALUATE ROUND RESULTS
 // ============================================
 const evaluateRoundResults = () => {
-  if (duelState !== "AIM_PHASE") return; // Prevent multiple evaluations
+  if (duelState !== "AIM_PHASE") return;
   console.log(`📊 Evaluating round ${currentRound} results...`);
   
-  // Mark duel as temporarily paused during evaluation
   duelState = "EVALUATING";
 
   if (barUpdateIntervalId) {
@@ -376,7 +375,11 @@ const evaluateRoundResults = () => {
   console.log(`  ${players[p1Id].name}: ${p1Result}`);
   console.log(`  ${players[p2Id].name}: ${p2Result}`);
   
-  // CHANGED: Added comprehensive evaluation logic including forfeits
+  // ============================================
+  // CRITICAL CHANGE: Determine outcome FIRST
+  // Then emit ONLY ONE event per outcome
+  // ============================================
+  
   let outcome = null;
 
   // Forfeit cases
@@ -386,37 +389,83 @@ const evaluateRoundResults = () => {
     outcome = (p1Result === 'hit') ? 'p1_wins' : 'advance';
   }
   // Normal cases
-  else if (p1Result === 'hit' && p2Result === 'hit') outcome = 'dodge';
-  else if (p1Result === 'hit' && p2Result === 'miss') outcome = 'p1_wins';
-  else if (p1Result === 'miss' && p2Result === 'hit') outcome = 'p2_wins';
-  else if (p1Result === 'miss' && p2Result === 'miss') outcome = 'advance_miss';
+  else if (p1Result === 'hit' && p2Result === 'hit') {
+    outcome = 'dodge';
+  } else if (p1Result === 'hit' && p2Result === 'miss') {
+    outcome = 'p1_wins';
+  } else if (p1Result === 'miss' && p2Result === 'hit') {
+    outcome = 'p2_wins';
+  } else if (p1Result === 'miss' && p2Result === 'miss') {
+    outcome = 'advance_miss';
+  }
 
-  // Execute outcome
+  // ============================================
+  // Execute outcome - ONE EVENT PER OUTCOME
+  // ============================================
   switch (outcome) {
     case 'p1_wins':
       console.log(`🎯 ${players[p1Id].name} WINS!`);
       players[p2Id].health = 0;
-      endDuel("WINNER", players[p1Id]);
+      
+      // ONE event: winner shot successfully
+      io.emit("duel:roundEnd", { 
+        outcome: 'hit',
+        winnerId: p1Id,
+        loserId: p2Id,
+        round: currentRound
+      });
+      
+      setTimeout(() => endDuel("WINNER", players[p1Id]), 800);
       break;
+      
     case 'p2_wins':
       console.log(`🎯 ${players[p2Id].name} WINS!`);
       players[p1Id].health = 0;
-      endDuel("WINNER", players[p2Id]);
+      
+      // ONE event: winner shot successfully
+      io.emit("duel:roundEnd", { 
+        outcome: 'hit',
+        winnerId: p2Id,
+        loserId: p1Id,
+        round: currentRound
+      });
+      
+      setTimeout(() => endDuel("WINNER", players[p2Id]), 800);
       break;
+      
     case 'dodge':
       console.log(`🤺 BOTH HIT - DODGE! Advancing to round ${currentRound + 1}`);
-      io.emit("duel:bothHit", { round: currentRound });
-      setTimeout(advanceRound, 1000);
+      
+      // ONE event: both hit, everyone dodges
+      io.emit("duel:roundEnd", { 
+        outcome: 'dodge',
+        round: currentRound
+      });
+      
+      setTimeout(advanceRound, 1200);
       break;
+      
     case 'advance_miss':
       console.log(`❌ BOTH MISS - Advancing to round ${currentRound + 1}`);
-      io.emit("duel:bothMiss", { round: currentRound });
-      setTimeout(advanceRound, 1000);
+      
+      // ONE event: both missed
+      io.emit("duel:roundEnd", { 
+        outcome: 'miss',
+        round: currentRound
+      });
+      
+      setTimeout(advanceRound, 1200);
       break;
-    case 'advance': // Covers forfeit/miss cases where no one scored
-      console.log(`- No winner this round. Advancing to round ${currentRound + 1}`);
-      io.emit("duel:bothMiss", { round: currentRound }); // Can reuse 'bothMiss' UI
-      setTimeout(advanceRound, 1000);
+      
+    case 'advance':
+      console.log(`- No scoring this round. Advancing to round ${currentRound + 1}`);
+      
+      io.emit("duel:roundEnd", { 
+        outcome: 'miss',
+        round: currentRound
+      });
+      
+      setTimeout(advanceRound, 1200);
       break;
   }
 };
@@ -426,7 +475,7 @@ const evaluateRoundResults = () => {
 // ============================================
 const advanceRound = () => {
   currentRound++;
-  console.log(`⏭️ Advancing to round ${currentRound} - BAR SPEEDS UP`);
+  console.log(`⏭️ ADVANCING TO ROUND ${currentRound}`);
 
   const fighterIds = Array.from(activeFighterIds);
   fighterIds.forEach(id => {
@@ -437,15 +486,17 @@ const advanceRound = () => {
     }
   });
 
+  console.log(`📡 SERVER: Emitting duel:newRound for round ${currentRound}`);
   io.emit("duel:newRound", {
     round: currentRound,
     barCycleDuration: getBarCycleDuration(currentRound),
     message: `ROUND ${currentRound}!`
   });
 
-  // ADDED: Reset the bar timer for the new round and restart the loop
-  duelState = "AIM_PHASE"; // Set state back to AIM
+  // Reset bar and restart
+  duelState = "AIM_PHASE";
   synchronizedBarStartTime = Date.now();
+  console.log(`▶️ SERVER: Restarting bar update loop for round ${currentRound}`);
   startBarUpdateLoop();
 };
 

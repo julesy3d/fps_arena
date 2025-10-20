@@ -20,28 +20,30 @@ export const Fighter = ({ position, rotation = 0, animationState = 'idle' }: Fig
     return SkeletonUtils.clone(scene) as THREE.Group;
   }, [scene]);
   
-  const { actions, names } = useAnimations(animations, group);
-  const triggerCountRef = useRef(0);
+  const { actions, names, mixer } = useAnimations(animations, group);
   
-  // ALWAYS keep armed animation playing as base layer
+  // ============================================
+  // NUCLEAR OPTION: Always keep idle as safety net
+  // ============================================
   useEffect(() => {
-    const armedAction = actions['drawn_idle'];
-    if (armedAction) {
-      armedAction.reset();
-      armedAction.setLoop(THREE.LoopRepeat, Infinity);
-      armedAction.setEffectiveWeight(1.0);
-      armedAction.play();
-      console.log('🔫 Base layer: armed animation always looping');
+    const idleAction = actions['Combat_Idle'];
+    if (idleAction) {
+      idleAction.reset();
+      idleAction.setLoop(THREE.LoopRepeat, Infinity);
+      idleAction.setEffectiveWeight(0); // Zero weight = invisible but keeps skeleton alive
+      idleAction.play();
+      console.log('🛡️ Safety net: idle always playing at 0 weight');
     }
     
     return () => {
-      armedAction?.stop();
+      idleAction?.stop();
     };
-  }, [actions]); // Only run once when actions are ready
+  }, [actions]);
   
+  // ============================================
+  // Main animation logic
+  // ============================================
   useEffect(() => {
-    triggerCountRef.current++;
-    
     const animationMap: Record<typeof animationState, string> = {
       'idle': 'Combat_Idle',
       'draw': 'draw',
@@ -54,61 +56,23 @@ export const Fighter = ({ position, rotation = 0, animationState = 'idle' }: Fig
     
     const targetAnim = animationMap[animationState];
     const action = actions[targetAnim];
-    const armedAction = actions['drawn_idle'];
     
-    if (!action || !armedAction) {
+    if (!action) {
       console.warn(`❌ Animation "${targetAnim}" not found. Available:`, names);
       return;
     }
     
-    // If we're explicitly in 'armed' state, just use the base layer
-    if (animationState === 'armed') {
-      armedAction.setEffectiveWeight(1.0);
-      console.log(`⚡ Armed state (base layer only)`);
-      return;
-    }
+    console.log(`🎬 Playing: ${animationState} (${targetAnim})`);
     
-    // SPECIAL CASE: Dodge blends with armed base
-    if (animationState === 'dodging') {
-      const dodgeAction = actions['dodge'];
-      
-      if (dodgeAction) {
-        // Stop other overlays
-        Object.values(actions).forEach(a => {
-          if (a && a !== armedAction && a !== dodgeAction) {
-            a.stop();
-            a.reset();
-          }
-        });
-        
-        // Armed stays at 40%
-        armedAction.setEffectiveWeight(0.4);
-        
-        // Dodge plays on top at 60%
-        dodgeAction.setLoop(THREE.LoopOnce, 1);
-        dodgeAction.clampWhenFinished = false;
-        dodgeAction.reset().play();
-        dodgeAction.setEffectiveWeight(0.6);
-        
-        console.log(`⚡ Dodge blend #${triggerCountRef.current}`);
-        
-        return () => {
-          dodgeAction.stop();
-        };
-      }
-    }
-    
-    // NORMAL CASE: Play animation ON TOP of armed base
-    // Stop other animations (but NOT armed)
-    Object.values(actions).forEach(a => {
-      if (a && a !== armedAction && a !== action) {
+    // Stop all OTHER animations (except safety net idle)
+    Object.entries(actions).forEach(([name, a]) => {
+      if (a && name !== targetAnim && name !== 'Combat_Idle') {
         a.stop();
-        a.reset();
       }
     });
     
-    // Configure the overlay animation
-    const loopingStates: typeof animationState[] = ['idle', 'victory'];
+    // Configure
+    const loopingStates: typeof animationState[] = ['idle', 'armed', 'victory'];
     const shouldLoop = loopingStates.includes(animationState);
     
     action.setLoop(
@@ -116,29 +80,19 @@ export const Fighter = ({ position, rotation = 0, animationState = 'idle' }: Fig
       Infinity
     );
     
-    // Only clamp terminal states
-    if (['death', 'victory'].includes(animationState)) {
-      action.clampWhenFinished = true;
-    } else {
-      action.clampWhenFinished = false;
-    }
+    action.clampWhenFinished = ['death', 'victory'].includes(animationState);
     
-    // Apply rotation for combat animations
+    // Rotation for combat animations
     const needsRotation = ['draw', 'armed', 'shooting', 'dodging'].includes(animationState);
     clonedScene.rotation.y = needsRotation ? -Math.PI / 2 : 0;
     
-    // Play overlay at full weight, armed stays underneath at lower weight
-    armedAction.setEffectiveWeight(0.2); // Keep armed subtle underneath
-    action.reset().play();
-    action.setEffectiveWeight(1.0);
-    
-    console.log(`⚡ ${animationState} → ${targetAnim} (trigger #${triggerCountRef.current})`);
+    // Play with full weight
+    action.reset();
+    action.setEffectiveWeight(1);
+    action.play();
     
     return () => {
-      // Don't stop armed, only the overlay
-      if (action !== armedAction) {
-        action.stop();
-      }
+      action.stop();
     };
     
   }, [animationState, actions, names, clonedScene]);
