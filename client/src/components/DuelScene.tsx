@@ -1,7 +1,7 @@
 "use client";
 
 import { useThree } from "@react-three/fiber";
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { useGameStore } from "@/store/useGameStore";
 import { Fighter } from "./Fighter";
 import { FighterNameLabel } from "./FighterNameLabel";
@@ -33,59 +33,59 @@ const useAudio = () => {
     cinematicIntroRef.current.load();
   }, []);
   
-  const playClick = () => { 
+  // WRAP EVERYTHING IN useCallback
+  const playClick = useCallback(() => { 
     if (clickAudioRef.current) { 
       clickAudioRef.current.currentTime = 0; 
       clickAudioRef.current.play().catch(e => console.warn('Sound failed:', e)); 
     } 
-  };
+  }, []);
   
-  const playClack = () => { 
+  const playClack = useCallback(() => { 
     if (clackAudioRef.current) { 
       clackAudioRef.current.currentTime = 0; 
       clackAudioRef.current.play().catch(e => console.warn('Sound failed:', e)); 
     } 
-  };
+  }, []);
   
-  const playHammer = () => { 
+  const playHammer = useCallback(() => { 
     if (hammerAudioRef.current) { 
       hammerAudioRef.current.currentTime = 0; 
       hammerAudioRef.current.play().catch(e => console.warn('Sound failed:', e)); 
     } 
-  };
+  }, []);
   
-  const playShoot = () => { 
+  const playShoot = useCallback(() => { 
     if (shootAudioRef.current) { 
       shootAudioRef.current.currentTime = 0; 
       shootAudioRef.current.play().catch(e => console.warn('Sound failed:', e)); 
     } 
-  };
+  }, []);
   
-  const playGong = () => { 
+  const playGong = useCallback(() => { 
     if (gongAudioRef.current) { 
       gongAudioRef.current.currentTime = 0; 
       gongAudioRef.current.play().catch(e => console.warn('Sound failed:', e)); 
     } 
-  };
+  }, []);
   
-  const playCinematicIntro = () => {
+  const playCinematicIntro = useCallback(() => {
     if (cinematicIntroRef.current) {
       cinematicIntroRef.current.currentTime = 0;
       cinematicIntroRef.current.volume = 1.0;
       cinematicIntroRef.current.play().catch(e => console.warn('Cinematic intro failed:', e));
     }
-  };
+  }, []);
   
-  const stopCinematicIntro = () => {
+  const stopCinematicIntro = useCallback(() => {
     if (cinematicIntroRef.current && !cinematicIntroRef.current.paused) {
       cinematicIntroRef.current.pause();
       cinematicIntroRef.current.currentTime = 0;
     }
-  };
+  }, []);
   
   return { playClick, playClack, playHammer, playShoot, playGong, playCinematicIntro, stopCinematicIntro };
 };
-
 
 // ============================================
 // SHOOTING BAR - ASCII-style Visual timing indicator
@@ -292,6 +292,25 @@ export const DuelUI = () => {
   const [showNarrator, setShowNarrator] = useState(false);
   const [narratorComplete, setNarratorComplete] = useState(false);
 
+  // ============================================
+  // ADD TIMER MANAGEMENT
+  // ============================================
+  const activeTimers = useRef<NodeJS.Timeout[]>([]);
+
+  const clearAllTimers = () => {
+    activeTimers.current.forEach(timer => clearTimeout(timer));
+    activeTimers.current = [];
+  };
+
+  const addTimer = (callback: () => void, delay: number) => {
+    const timer = setTimeout(() => {
+      callback();
+      activeTimers.current = activeTimers.current.filter(t => t !== timer);
+    }, delay);
+    activeTimers.current.push(timer);
+    return timer;
+  };
+
   // Reset narrator when returning to lobby
   useEffect(() => {
     if (gamePhase === "LOBBY") {
@@ -301,163 +320,246 @@ export const DuelUI = () => {
   }, [gamePhase]);
   
   // Socket event handlers
-  useEffect(() => {
-    if (!socket) return;
+// Socket event handlers
+useEffect(() => {
+  if (!socket) return;
 
-    // === AI MODE ACTIVATION ===
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() === 'a' && !isAIMode) {
-        console.log("🤖 Requesting AI opponent...");
-        socket.emit("duel:requestAIMode");
-        setIsAIMode(true);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
+  console.log('🔌 Socket handlers registered');
 
-    // === SOCKET EVENT HANDLERS ===
+  // === AI MODE ACTIVATION ===
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key.toLowerCase() === 'a' && !isAIMode) {
+      console.log("🤖 Requesting AI opponent...");
+      socket.emit("duel:requestAIMode");
+      setIsAIMode(true);
+    }
     
-    // Both players ready → Start narrator sequence
-    const onBothReady = () => {
-      console.log("🤝 Both players are ready. Starting narrator sequence.");
-      setIsWaitingForOpponent(false);
-      playCinematicIntro(); // Start 24-second cinematic intro
-    };
+    // ADD THIS: Spacebar to shoot (debug)
+    if (e.key === ' ') {
+      e.preventDefault();
+      console.log("⌨️ SPACEBAR PRESSED - attempting to shoot");
+      handleClick(); // Call the same click handler
+    }
+  };
+  window.addEventListener('keydown', handleKeyDown);
 
-    // Duel state update
-    const onDuelState = () => { 
-      setCanClick(false); 
-      setActionType(null); 
-      setBarVisible(false); 
-    };
+  // === SOCKET EVENT HANDLERS ===
+  
+  // Both players ready → Start narrator sequence
+  const onBothReady = () => {
+    console.log("🤝 Both players are ready. Starting narrator sequence.");
+    setIsWaitingForOpponent(false);
+    playCinematicIntro();
+  };
+
+  // REMOVED: duel:state handler (does nothing useful)
+  
+  // GONG! → Start draw animation, then enable shooting
+  const onGong = () => {
+    console.log("🔔 GONG! Starting draw sequence");
+    playGong();
+    stopCinematicIntro();
+
+    setBarVisible(true);
+
     
-    // GONG! → Hide narrator, start draw phase
-    const onGong = () => { 
-      playGong();
-      stopCinematicIntro();
+    // Get fresh fighters from store
+    const currentFighters = useGameStore.getState().fighters;
+    
+    // Play draw animation
+    currentFighters.forEach(f => {
+      useGameStore.getState().updateFighterAnimation(f.id, 'draw');
+    });
+    
+    // After draw completes, enable shooting
+    console.log("⏰ Setting 1200ms timer for draw→armed");
+    addTimer(() => {
+      console.log("✅ Draw complete, enabling shooting");
       
-      // Play draw animation
+      const fighters = useGameStore.getState().fighters;
       fighters.forEach(f => {
-        useGameStore.getState().updateFighterAnimation(f.id, 'draw');
+        useGameStore.getState().updateFighterAnimation(f.id, 'armed');
       });
       
-      // After 500ms (or whatever draw animation length is), go to armed
-      setTimeout(() => {
-        fighters.forEach(f => {
-          useGameStore.getState().updateFighterAnimation(f.id, 'armed');
-        });
-      }, 500); // Adjust this to match your actual 'draw' animation duration
+      setCanClick(true);
+      setActionType('shoot');
       
-      // Enable shooting
-      setCanClick(true); 
-      setActionType('shoot'); 
-      setBarVisible(true);
-    };
+      console.log(`📊 State: canClick=true, actionType=shoot, barVisible=true`);
+    }, 1200);
+  };
 
-    // Start aiming phase
-    const onAimPhase = () => { 
-      setCanClick(true); 
-      setActionType('shoot'); 
-      setBarVisible(true);
-    };
+  // Bar position update (60fps from server)
+  const onBarUpdate = ({ position }: { position: number }) => {
+    setBarPosition(position);
+  };
 
-    // Bar position update (60fps from server)
-    const onBarUpdate = ({ position }: { position: number }) => {
-      setBarPosition(position);
-    };
-
-    // Someone shot
-    const onShot = ({ shooterId, hit }: { shooterId: string, hit: boolean }) => { 
-      if (shooterId === selfId && hit) { 
-        playShoot(); 
+  // New round (after dodge/miss)
+  const onNewRound = ({ round, message }: { round: number, message?: string }) => {
+    console.log(`🔄 NEW ROUND ${round} - Re-enabling controls`);
+    
+    hasShotThisRound.current = false;
+    setCanClick(true);
+    setActionType('shoot');
+    // Bar already visible
+    
+    console.log(`📊 State: canClick=true, actionType=shoot, hasShotThisRound=false`);
+    
+    // Get fresh fighters
+    const currentFighters = useGameStore.getState().fighters;
+    currentFighters.forEach(f => {
+      if (f.animationState !== 'armed') {
+        useGameStore.getState().updateFighterAnimation(f.id, 'armed');
       }
-      useGameStore.getState().updateFighterAnimation(shooterId, 'shooting');
-    };
+    });
+  };
 
-    // Both hit → Dodge!
-    const onBothHit = () => { 
-      setCanClick(false); 
-      setActionType(null);
-      fighters.forEach(f => {
-        useGameStore.getState().updateFighterAnimation(f.id, 'dodging');
-      });
-    };
-
-    // Both missed → Try again
-    const onBothMiss = () => { 
-      setCanClick(false); 
-      setActionType(null); 
-    };
-
-    // New round (after both miss or dodge)
-    const onNewRound = ({ message: serverMessage }: { message: string }) => { 
-      setCanClick(true); 
-      setActionType('shoot'); 
-      setBarVisible(true); 
-      hasShotThisRound.current = false; 
-    };
-
-    // Game phase changed (used for POST_ROUND animations)
-    const onGamePhaseChange = ({ phase, winnerData }: any) => {
-      if (phase === "POST_ROUND" && winnerData) {
-        if (winnerData.isSplit) {
-          // Draw → Both look defeated
-          fighters.forEach(f => {
-            useGameStore.getState().updateFighterAnimation(f.id, 'death');
-          });
-        } else {
-          // Winner celebrates, loser dies
-          fighters.forEach(f => {
-            if (f.name === winnerData.name) {
-              useGameStore.getState().updateFighterAnimation(f.id, 'victory');
-            } else {
-              useGameStore.getState().updateFighterAnimation(f.id, 'death');
-            }
-          });
-        }
-        
-        setIsWaitingForOpponent(true); 
-        setCanClick(false); 
-        setActionType(null); 
+  // Round end - handle outcome
+  const onRoundEnd = ({ outcome, winnerId, loserId, round }: { 
+    outcome: 'hit' | 'dodge' | 'miss',
+    winnerId?: string,
+    loserId?: string,
+    round: number
+  }) => {
+    console.log(`📊 ROUND END: outcome=${outcome}, round=${round}`);
+    
+    // Disable clicking during outcome
+    setCanClick(false);
+    
+    // Get fresh fighters from store
+    const currentFighters = useGameStore.getState().fighters;
+    
+    switch (outcome) {
+      case 'hit':
+        // TERMINAL: Someone died
         setBarVisible(false);
-      }
-    };
+        setActionType(null);
         
-    // Register all listeners
-    socket.on("duel:bothReady", onBothReady);
-    socket.on("duel:state", onDuelState);
-    socket.on("duel:gong", onGong);
-    socket.on("duel:aimPhase", onAimPhase);
-    socket.on("duel:barUpdate", onBarUpdate);
-    socket.on("duel:bothHit", onBothHit);
-    socket.on("duel:bothMiss", onBothMiss);
-    socket.on("duel:newRound", onNewRound);
-    socket.on("duel:shot", onShot);
-    socket.on("game:phaseChange", onGamePhaseChange);
+        console.log(`💥 Round ${round}: ${winnerId} hit ${loserId}`);
+        
+        currentFighters.forEach(f => {
+          if (f.id === winnerId) {
+            useGameStore.getState().updateFighterAnimation(f.id, 'shooting');
+            playShoot();
+          } else if (f.id === loserId) {
+            useGameStore.getState().updateFighterAnimation(f.id, 'death');
+          }
+        });
+        break;
+        
+      case 'dodge':
+        // CONTINUE: Bar stays visible
+        console.log(`🤺 Round ${round}: BOTH HIT - DODGE!`);
+        
+        currentFighters.forEach(f => {
+          useGameStore.getState().updateFighterAnimation(f.id, 'dodging');
+        });
+        break;
+        
+      case 'miss':
+        // CONTINUE: Bar stays visible
+        console.log(`❌ Round ${round}: BOTH MISSED`);
+        // Keep them armed
+        break;
+    }
+  };
+
+  // Game phase changed (for POST_ROUND)
+  const onGamePhaseChange = ({ phase, winnerData }: any) => {
+    console.log(`🎮 GAME PHASE: ${phase}`);
     
-    // Cleanup function
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      socket.off("duel:bothReady", onBothReady);
-      socket.off("duel:state", onDuelState);
-      socket.off("duel:gong", onGong);
-      socket.off("duel:aimPhase", onAimPhase);
-      socket.off("duel:barUpdate", onBarUpdate);
-      socket.off("duel:bothHit", onBothHit);
-      socket.off("duel:bothMiss", onBothMiss);
-      socket.off("duel:newRound", onNewRound);
-      socket.off("duel:shot", onShot);
-      socket.off("game:phaseChange", onGamePhaseChange);
-    };
-  }, [socket, selfId, playGong, fighters, isAIMode]);
+    if (phase === "POST_ROUND" && winnerData) {
+      setBarVisible(false);
+      setCanClick(false);
+      setActionType(null);
+      
+      // Get fresh fighters
+      const currentFighters = useGameStore.getState().fighters;
+      
+      if (winnerData.isSplit) {
+        currentFighters.forEach(f => {
+          useGameStore.getState().updateFighterAnimation(f.id, 'death');
+        });
+      } else {
+        currentFighters.forEach(f => {
+          if (f.name === winnerData.name) {
+            useGameStore.getState().updateFighterAnimation(f.id, 'victory');
+          } else {
+            useGameStore.getState().updateFighterAnimation(f.id, 'death');
+          }
+        });
+      }
+      
+      setIsWaitingForOpponent(true);
+    }
+  };
+      
+  // Register all listeners
+  socket.on("duel:bothReady", onBothReady);
+  socket.on("duel:gong", onGong);
+  socket.on("duel:barUpdate", onBarUpdate);
+  socket.on("duel:newRound", onNewRound);
+  socket.on("duel:roundEnd", onRoundEnd);
+  socket.on("game:phaseChange", onGamePhaseChange);
+  
+  // Cleanup
+  return () => {
+    window.removeEventListener('keydown', handleKeyDown);
+    socket.off("duel:bothReady", onBothReady);
+    socket.off("duel:gong", onGong);
+    socket.off("duel:barUpdate", onBarUpdate);
+    socket.off("duel:newRound", onNewRound);
+    socket.off("duel:roundEnd", onRoundEnd);
+    socket.off("game:phaseChange", onGamePhaseChange);
+  };
+}, [socket, isAIMode, playGong, playCinematicIntro, stopCinematicIntro, playShoot]);
+// ^^^^^ Minimal dependencies - only functions that never change
   
   // Handle user clicks (shoot)
+
+  useEffect(() => {
+  const handleWindowClick = (e: MouseEvent) => {
+    console.log(`📍 WINDOW CLICKED at x:${e.clientX} y:${e.clientY}`);
+    handleClick();
+  };
+  
+  window.addEventListener('click', handleWindowClick);
+  
+  return () => {
+    window.removeEventListener('click', handleWindowClick);
+  };
+}, [canClick, socket, actionType, barPosition]);
+
+// Handle user clicks (shoot) - this function stays the same
   const handleClick = () => {
-    if (!canClick || !socket || !actionType) return;
-    if (actionType === 'shoot' && hasShotThisRound.current) return;
+    console.log(`🖱️ CLICK/SPACEBAR HANDLER CALLED`);
+    console.log(`   canClick: ${canClick}`);
+    console.log(`   socket: ${socket ? 'connected' : 'null'}`);
+    console.log(`   actionType: ${actionType}`);
+    console.log(`   hasShotThisRound: ${hasShotThisRound.current}`);
+    console.log(`   barPosition: ${barPosition.toFixed(3)}`);
     
-    // Only shooting now, no draw
+    if (!canClick) {
+      console.warn('❌ BLOCKED: canClick is false');
+      return;
+    }
+    
+    if (!socket) {
+      console.warn('❌ BLOCKED: no socket');
+      return;
+    }
+    
+    if (!actionType) {
+      console.warn('❌ BLOCKED: actionType is null');
+      return;
+    }
+    
+    if (actionType === 'shoot' && hasShotThisRound.current) {
+      console.warn('❌ BLOCKED: already shot this round');
+      return;
+    }
+    
     if (actionType === 'shoot') {
-      console.log(`CLIENT CLICK: Shooting at bar position ${barPosition.toFixed(2)}`);
+      console.log(`✅ SHOOTING at position ${barPosition.toFixed(3)}`);
       socket.emit("duel:shoot");
       hasShotThisRound.current = true;
       setCanClick(false);
@@ -465,7 +567,14 @@ export const DuelUI = () => {
   };
   
   return (
-    <div className="absolute inset-0 cursor-crosshair" onClick={handleClick}>
+    <div 
+      className="absolute inset-0" 
+      style={{ 
+        cursor: 'crosshair',
+        opacity: canClick ? 1 : 0.6,
+        pointerEvents: 'none' // Changed: no longer catches clicks itself
+      }}
+    >
       {/* === WAITING FOR OPPONENT === */}
       {isWaitingForOpponent && (
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-base/90">
