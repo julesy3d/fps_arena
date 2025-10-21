@@ -542,7 +542,9 @@ const finalizeAuction = () => {
   activeFighterIds.clear();
   const finalFighters = [];
 
+  // Calculate pot
   roundPot = Object.values(players).reduce((sum, player) => sum + player.betAmount, 0);
+  console.log(`💰 Round pot: ${roundPot} lamports`); // Debug log
 
   for (const id of fighterIds) {
     const player = players[id];
@@ -572,10 +574,14 @@ const finalizeAuction = () => {
     }
   });
 
-  io.emit("game:phaseChange", { phase: "IN_ROUND", fighters: finalFighters });
-  broadcastLobbyState();
+  // CHANGED: Add roundPot to the emission
+  io.emit("game:phaseChange", { 
+    phase: "IN_ROUND", 
+    fighters: finalFighters,
+    roundPot: roundPot  // ← ADDED THIS LINE
+  });
   
-  // Start duel
+  broadcastLobbyState();
   startDuel();
 };
 
