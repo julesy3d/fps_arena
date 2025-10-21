@@ -41,7 +41,7 @@ const StreamPlaceholder = ({ isBlurred }: { isBlurred: boolean }) => (
 );
 
 export default function Home() {
-  const { isHydrated, socket, gamePhase, fighters, connectSocket, roundWinner } = useGameStore();
+  const { isHydrated, socket, gamePhase, fighters, roundPot, connectSocket, roundWinner } = useGameStore();
   const { connected } = useWallet();
   const [isLobbyVisible, setLobbyVisible] = useState(false);
   const [isTitleHovered, setTitleHovered] = useState(false);
@@ -152,6 +152,19 @@ export default function Home() {
       {mounted && walletReady && !connected && !isTitleHovered && (
         <div className="fixed top-4 right-4 z-40 wallet-button-container">
           <WalletMultiButton />
+        </div>
+      )}
+
+      {gamePhase === "IN_ROUND" && roundPot > 0 && (
+        <div className="fixed bottom-16 left-1/2 -translate-x-1/2 z-30">
+          <div className="border-dashed-ascii bg-ascii-shade px-6 py-3">
+            <div className="font-mono text-center">
+              <div className="text-xs text-subtext1 mb-1">// TOTAL POT</div>
+              <div className="text-2xl font-bold text-amber tracking-wider">
+                {roundPot.toLocaleString()} ◎
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

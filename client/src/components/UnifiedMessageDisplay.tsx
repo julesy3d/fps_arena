@@ -12,44 +12,39 @@ interface Message {
 const NARRATOR_MESSAGES: Message[] = [
   { text: "well, well, well...", duration: 2000 },
   { text: "looks like we got ourselves a situation.", duration: 4000 },
-  { text: "at high noon, you will both draw your guns.", duration: 5000 },
+  { text: "at high noon, you will both draw your guns.", duration: 4000 },
   { text: "one dies,", duration: 4000 },
-  { text: "one gets rich.", duration: 5000 },
-  { text: "HIGH NOON APPROACHES.", duration: 0, dramatic: true }, // Stays until GONG
+  { text: "one gets rich.", duration: 4000 },
+  { text: "HIGH NOON APPROACHES.", duration: 0, dramatic: true },
 ];
 
 export const UnifiedMessageDisplay = () => {
-  const { gamePhase, roundWinner, socket } = useGameStore();
+  const { gamePhase, roundWinner, socket, fighters } = useGameStore();
   const [currentMessage, setCurrentMessage] = useState<string>("");
   const [isDramatic, setIsDramatic] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   
-  // Narrator state
   const [narratorIndex, setNarratorIndex] = useState(0);
   const [showingNarrator, setShowingNarrator] = useState(false);
   const narratorHasPlayed = useRef(false);
 
-  // Track ALL active timers so we can clear them immediately
   const activeTimers = useRef<NodeJS.Timeout[]>([]);
 
-  // Helper function to clear ALL pending timers
   const clearAllTimers = () => {
     activeTimers.current.forEach(timer => clearTimeout(timer));
     activeTimers.current = [];
   };
 
-  // Helper function to add a timer that will be tracked
   const addTimer = (callback: () => void, delay: number) => {
     const timer = setTimeout(() => {
       callback();
-      // Remove this timer from tracking once it fires
       activeTimers.current = activeTimers.current.filter(t => t !== timer);
     }, delay);
     activeTimers.current.push(timer);
     return timer;
   };
 
-  // Reset everything when returning to LOBBY
+  // Reset when returning to LOBBY
   useEffect(() => {
     if (gamePhase === "LOBBY") {
       clearAllTimers();
@@ -61,7 +56,7 @@ export const UnifiedMessageDisplay = () => {
     }
   }, [gamePhase]);
 
-  // Start narrator ONLY ONCE when entering IN_ROUND
+  // Start narrator when entering IN_ROUND
   useEffect(() => {
     if (gamePhase === "IN_ROUND" && !narratorHasPlayed.current && !showingNarrator) {
       narratorHasPlayed.current = true;
@@ -80,7 +75,6 @@ export const UnifiedMessageDisplay = () => {
     setIsVisible(true);
 
     if (message.duration === 0) {
-      // Last message stays until GONG
       return;
     }
 
@@ -99,7 +93,6 @@ export const UnifiedMessageDisplay = () => {
     if (!socket) return;
 
     const handleGong = () => {
-      // IMMEDIATELY clear everything
       clearAllTimers();
       setShowingNarrator(false);
       setIsVisible(false);
@@ -107,7 +100,6 @@ export const UnifiedMessageDisplay = () => {
     };
 
     const handleNewRound = ({ round }: { round: number }) => {
-      // IMMEDIATELY clear everything
       clearAllTimers();
       
       setCurrentMessage(`═══ ROUND ${round} ═══`);
@@ -120,7 +112,6 @@ export const UnifiedMessageDisplay = () => {
     };
 
     const handleBothHit = () => {
-      // IMMEDIATELY clear everything
       clearAllTimers();
       
       setCurrentMessage("BOTH HIT — DODGE!");
@@ -133,7 +124,6 @@ export const UnifiedMessageDisplay = () => {
     };
 
     const handleBothMiss = () => {
-      // IMMEDIATELY clear everything
       clearAllTimers();
       
       setCurrentMessage("BOTH MISSED!");
@@ -158,14 +148,19 @@ export const UnifiedMessageDisplay = () => {
     };
   }, [socket]);
 
-  // Show winner announcement in POST_ROUND
+  // === WINNER/LOSER DISPLAY (POST_ROUND) ===
   useEffect(() => {
     if (gamePhase === "POST_ROUND" && roundWinner) {
-      // IMMEDIATELY clear everything
       clearAllTimers();
       setShowingNarrator(false);
       
+      // Check if current player won or lost
+      const selfId = socket?.id;
+      const wasFighter = fighters.some(f => f.id === selfId);
+      const selfFighter = fighters.find(f => f.id === selfId);
+      
       if (roundWinner.isSplit) {
+        // DRAW - POT SPLIT
         const individualPayout = roundWinner.pot / 2;
         setCurrentMessage(`DRAW — POT SPLIT`);
         setIsDramatic(false);
@@ -175,22 +170,59 @@ export const UnifiedMessageDisplay = () => {
           setCurrentMessage(`Each receives ${individualPayout.toLocaleString()} Lamports`);
           setIsDramatic(false);
           setIsVisible(true);
-        }, 1500);
-      } else {
-        setCurrentMessage(`${roundWinner.name} WINS!`);
-        setIsDramatic(true);
-        setIsVisible(true);
+        }, 2000);
         
-        addTimer(() => {
-          setCurrentMessage(`+${roundWinner.pot.toLocaleString()} Lamports`);
-          setIsDramatic(false);
+      } else {
+        const didWin = selfFighter && selfFighter.name === roundWinner.name;
+        
+        if (didWin) {
+          // === WINNER VIEW ===
+          setCurrentMessage(`YOU WON!`);
+          setIsDramatic(true);
           setIsVisible(true);
-        }, 1500);
+          
+          addTimer(() => {
+            setCurrentMessage(`+${roundWinner.pot.toLocaleString()} Lamports`);
+            setIsDramatic(false);
+            setIsVisible(true);
+          }, 2000);
+          
+        } else if (wasFighter) {
+          // === LOSER VIEW ===
+          const lostAmount = selfFighter?.betAmount || 0;
+          
+          setCurrentMessage(`YOU LOST`);
+          setIsDramatic(true);
+          setIsVisible(true);
+          
+          addTimer(() => {
+            setCurrentMessage(`-${lostAmount.toLocaleString()} Lamports`);
+            setIsDramatic(false);
+            setIsVisible(true);
+          }, 2000);
+          
+          addTimer(() => {
+            setCurrentMessage(`${roundWinner.name} won the pot`);
+            setIsDramatic(false);
+            setIsVisible(true);
+          }, 4000);
+          
+        } else {
+          // === SPECTATOR VIEW ===
+          setCurrentMessage(`${roundWinner.name} WINS!`);
+          setIsDramatic(true);
+          setIsVisible(true);
+          
+          addTimer(() => {
+            setCurrentMessage(`+${roundWinner.pot.toLocaleString()} Lamports`);
+            setIsDramatic(false);
+            setIsVisible(true);
+          }, 2000);
+        }
       }
     }
-  }, [gamePhase, roundWinner]);
+  }, [gamePhase, roundWinner, socket, fighters]);
 
-  // Don't render during LOBBY phase
   if (gamePhase === "LOBBY") return null;
 
   return (

@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import { io, Socket } from "socket.io-client";
 
-// Represents a single player in the game
 export interface Player {
   id: string;
   walletAddress: string;
@@ -33,8 +32,9 @@ interface StoreState {
   players: Record<string, Player>;
   lobbyCountdown: number | null;
   roundWinner: { name: string; pot: number; isSplit?: boolean } | null;
-  fighters: Player[]; // The 2 fighters in current duel
-  isHydrated: boolean; // NEW: Flag to track if we have server state
+  fighters: Player[];
+  isHydrated: boolean;
+  roundPot: number; // ← ADDED
 }
 
 interface StoreActions {
@@ -60,13 +60,13 @@ const initialState: StoreState = {
   lobbyCountdown: null,
   roundWinner: null,
   fighters: [],
-  isHydrated: false, // NEW: Starts as false
+  isHydrated: false,
+  roundPot: 0, // ← ADDED
 };
 
 export const useGameStore = create<GameState>((set, get) => ({
   ...initialState,
 
-  // NEW: Action to set the hydration flag
   setHydrated: (isHydrated) => set({ isHydrated }),
 
   connectSocket: () => {
@@ -109,18 +109,20 @@ export const useGameStore = create<GameState>((set, get) => ({
       const phase = data.phase as StoreState["gamePhase"];
       set({ gamePhase: phase });
 
-      // CRITICAL FIX: The first time we receive an authoritative game phase,
-      // we know the app is "hydrated" with real data.
       if (!get().isHydrated) {
         set({ isHydrated: true });
       }
 
       if (phase === "IN_ROUND") {
-        set({ fighters: data.fighters, roundWinner: null });
+        set({ 
+          fighters: data.fighters, 
+          roundWinner: null,
+          roundPot: data.roundPot || 0 // ← ADDED
+        });
       } else if (phase === "POST_ROUND") {
         set({ roundWinner: data.winnerData });
       } else if (phase === "LOBBY") {
-        const { socket, isConnected, isHydrated } = get(); // Keep isHydrated true
+        const { socket, isConnected, isHydrated } = get();
         set({ ...initialState, socket, isConnected, isHydrated, lobbyPhase: 'BETTING' });
       }
     });
@@ -139,13 +141,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
 
-
   clearWinner: () => {
     set({ roundWinner: null });
   },
 
   reset: () => {
-    // Keep the socket and connection status on reset, but reset hydration
     const { socket } = get();
     set({ ...initialState, socket, isConnected: false });
   },

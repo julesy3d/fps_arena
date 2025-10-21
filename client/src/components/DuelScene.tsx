@@ -200,6 +200,7 @@ const DuelSceneContent = ({ fighters }: { fighters: any[] }) => {
           <FighterNameLabel 
             name={fighter.name} 
             position={fighter.position}
+            betAmount={fighter.betAmount || 0}
           />
         </group>
       ))}
@@ -233,6 +234,7 @@ export const DuelStage3D = () => {
       return topBidders.map((player, index) => ({
         id: player.id,
         name: player.name,
+        betAmount: player.betAmount, // ← IMPORTANT
         position: index === 0 ? [0, 0, -3] : [0, 0, 3] as [number, number, number],
         rotation: index === 0 ? 0 : Math.PI,
         animationState: 'idle' as const
@@ -262,7 +264,11 @@ export const DuelStage3D = () => {
     console.log('🎯 DuelStage3D state:', {
       gamePhase,
       displayFightersCount: displayFighters.length,
-      displayFighters: displayFighters.map(f => ({ id: f.id, name: f.name }))
+      displayFighters: displayFighters.map(f => ({ 
+        id: f.id, 
+        name: f.name, 
+        betAmount: f.betAmount // ← Debug log
+      }))
     });
   }, [gamePhase, displayFighters]);
 
