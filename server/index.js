@@ -19,6 +19,10 @@ import {
 
 const app = express();
 const server = http.createServer(app);
+
+// ============================================
+// OPTIMIZED SOCKET.IO FOR 2 FIGHTERS + SPECTATORS
+// ============================================
 const io = new Server(server, {
   cors: {
     origin: [
@@ -28,6 +32,35 @@ const io = new Server(server, {
     ],
     methods: ["GET", "POST"],
   },
+  
+  // ============================================
+  // PERFORMANCE: Force WebSocket, skip polling
+  // ============================================
+  transports: ['websocket'],
+  
+  // ============================================
+  // PERFORMANCE: Disable compression for speed
+  // Trade-off: 2-3x more bandwidth, but negligible for small messages
+  // ============================================
+  perMessageDeflate: false,
+  
+  // ============================================
+  // CONNECTION: Aggressive timeouts for real-time
+  // ============================================
+  pingTimeout: 60000,    // 60s - consider connection dead
+  pingInterval: 25000,   // 25s - keep-alive ping
+  upgradeTimeout: 10000, // 10s - faster WebSocket upgrade
+  
+  // ============================================
+  // BUFFER: Smaller = faster processing
+  // ============================================
+  maxHttpBufferSize: 1e6, // 1MB (you send tiny messages)
+  
+  // ============================================
+  // MISC: Simplify connection
+  // ============================================
+  cookie: false, // No session cookies needed
+  allowUpgrades: true,
 });
 
 const PORT = 3001;
