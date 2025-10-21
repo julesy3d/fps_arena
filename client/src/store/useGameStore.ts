@@ -71,8 +71,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   connectSocket: () => {
     if (get().socket) return;
-    const newSocket = io(process.env.NEXT_PUBLIC_SERVER_URL!);
-
+    const newSocket = io(process.env.NEXT_PUBLIC_SERVER_URL!, {
+      transports: ['websocket'],  // ← Add this
+      upgrade: false,             // ← Add this
+    });
     newSocket.on("connect", () =>
       set({ isConnected: true, socket: newSocket }),
     );
