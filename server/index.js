@@ -281,7 +281,7 @@ const startBarUpdateLoop = () => {
         if (position >= BAR_TARGET_MIN) {
           playerData.aiShotAttempted = true; // Prevents re-rolling on subsequent frames
 
-          if (Math.random() < 0.70) {
+          if (Math.random() < 0.8) {
             // SUCCESS: Shoot now
             console.log(`🤖 AI ${players[id].name} is shooting...`);
             handleShoot(id);
