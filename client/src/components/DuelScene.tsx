@@ -389,6 +389,23 @@ export const DuelUI = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
 
+    const onShot = ({ shooterId, hit, barPosition }: { 
+      shooterId: string; 
+      hit: boolean; 
+      barPosition: number;
+    }) => {
+      // If it's YOUR shot and you already played it optimistically, skip
+      if (shooterId === socket.id && hasShotThisRound.current) {
+        console.log(`💥 My shot (already played optimistically)`);
+        return;
+      }
+      
+      // Otherwise, play the animation (opponent OR your AI-controlled shot from server)
+      console.log(`💥 ${shooterId === socket.id ? 'My AI' : 'Opponent'} is shooting!`);
+      playShoot();
+      useGameStore.getState().updateFighterAnimation(shooterId, 'shooting');
+    };
+
     // Both players ready
     const onBothReady = () => {
       console.log("🤝 Both players are ready. Starting narrator sequence.");
@@ -491,7 +508,6 @@ export const DuelUI = () => {
           currentFighters.forEach(f => {
             if (f.id === winnerId) {
               useGameStore.getState().updateFighterAnimation(f.id, 'shooting');
-              playShoot();
             } else if (f.id === loserId) {
               useGameStore.getState().updateFighterAnimation(f.id, 'death');
             }
@@ -501,9 +517,13 @@ export const DuelUI = () => {
         case 'dodge':
           console.log(`🤺 Round ${round}: BOTH HIT - DODGE!`);
           
-          currentFighters.forEach(f => {
-            useGameStore.getState().updateFighterAnimation(f.id, 'dodging');
-          });
+          // ✅ 300ms delay so we see both shooting animations first
+          addTimer(() => {
+            const currentFighters = useGameStore.getState().fighters;
+            currentFighters.forEach(f => {
+              useGameStore.getState().updateFighterAnimation(f.id, 'dodging');
+            });
+          }, 300);
           break;
           
         case 'miss':
@@ -543,6 +563,7 @@ export const DuelUI = () => {
     };
         
     // Register listeners
+    socket.on("duel:shot", onShot); 
     socket.on("duel:bothReady", onBothReady);
     socket.on("duel:gong", onGong);
     socket.on("duel:barUpdate", onBarUpdate);
@@ -552,6 +573,7 @@ export const DuelUI = () => {
     
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
+      socket.off("duel:shot", onShot);
       socket.off("duel:bothReady", onBothReady);
       socket.off("duel:gong", onGong);
       socket.off("duel:barUpdate", onBarUpdate);
