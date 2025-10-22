@@ -12,6 +12,8 @@ import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { DuelUI } from "@/components/DuelScene";
 import { AsciiRenderer } from "@react-three/drei";
 import { UnifiedMessageDisplay } from "@/components/UnifiedMessageDisplay";
+import { MoneyTransferBreakdown } from "@/components/MoneyTransferBreakdown";
+
 
 
 
@@ -155,6 +157,7 @@ export default function Home() {
         </div>
       )}
 
+      {/* Pot Display - IN_ROUND only */}
       {gamePhase === "IN_ROUND" && roundPot > 0 && (
         <div className="fixed bottom-16 left-1/2 -translate-x-1/2 z-30">
           <div className="border-dashed-ascii bg-ascii-shade px-6 py-3">
@@ -167,6 +170,9 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* Money Transfer Breakdown - POST_ROUND only */}
+      <MoneyTransferBreakdown />
 
       {/* Lobby Toggle */}
       <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-40">
