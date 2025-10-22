@@ -890,15 +890,13 @@ io.on("connection", (socket) => {
       const playerData = await getPlayerStats(walletAddress);
       if (!playerData) return;
 
-      let playerName = playerData.username;
-      if (!playerName || playerName === "Gladiator") {
-        playerName = `${walletAddress.substring(0, 4)}...${walletAddress.substring(walletAddress.length - 4)}`;
-      }
+      // Use username from database, fallback to "unknown player" (edge case)
+      let playerName = playerData.username || "unknown player";
 
       players[socket.id] = {
         id: socket.id,
         walletAddress: walletAddress,
-        name: playerName,
+        name: playerName,  // Will be shortened wallet address by default
         role: "CONTENDER",
         betAmount: 0,
         lastBetTimestamp: null,

@@ -19,11 +19,14 @@ export const getPlayerStats = async (walletAddress) => {
     .single();
 
   if (error && error.code === "PGRST116") {
-    // PGRST116: "The result contains 0 rows" - Player does not exist, so create them.
     console.log(`Player not found for ${walletAddress}. Creating new entry.`);
+    
+    // Default username is shortened wallet address
+    const defaultUsername = `${walletAddress.substring(0, 4)}...${walletAddress.substring(walletAddress.length - 4)}`;
+    
     const { data: newPlayer, error: insertError } = await supabase
       .from("players")
-      .insert({ wallet_address: walletAddress, username: "Gladiator" }) // Default username
+      .insert({ wallet_address: walletAddress, username: defaultUsername })
       .select()
       .single();
 
