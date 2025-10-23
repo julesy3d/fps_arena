@@ -389,11 +389,18 @@ export const DuelUI = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
 
-    const onShot = ({ shooterId, hit, barPosition }: { 
+    const onShot = ({ shooterId, hit, barPosition, autoMiss }: { 
       shooterId: string; 
       hit: boolean; 
       barPosition: number;
+      autoMiss?: boolean;  // ← Add this parameter
     }) => {
+      // ✅ FIX: Skip animations for auto-misses (player didn't shoot)
+      if (autoMiss) {
+        console.log(`⏰ ${shooterId === socket.id ? 'You' : 'Opponent'} auto-missed (no animation)`);
+        return;
+      }
+      
       // If it's YOUR shot and you already played it optimistically, skip
       if (shooterId === socket.id && hasShotThisRound.current) {
         console.log(`💥 My shot (already played optimistically)`);
