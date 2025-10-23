@@ -9,13 +9,11 @@ import { Transaction } from "@solana/web3.js";
 const BetControls = ({
   onBet,
   onCancel,
-  isProcessing,
-  statusMessage
+  isProcessing
 }: {
   onBet: (amount: number) => void;
   onCancel: () => void;
   isProcessing: boolean;
-  statusMessage: string;
 }) => {
   const [amount, setAmount] = useState(1000);
 
@@ -55,7 +53,7 @@ const BetControls = ({
 export const Lobby = () => {
   const { socket, players, lobbyCountdown, gamePhase } = useGameStore();
   const { connected, publicKey, signTransaction } = useWallet();
-  const { connection } = useConnection();
+  useConnection();
   const selfId = socket?.id || null;
 
   const [hasMounted, setHasMounted] = useState(false);
@@ -203,7 +201,6 @@ export const Lobby = () => {
               setBetStatus({ isProcessing: false, message: "" });
             }}
             isProcessing={betStatus.isProcessing}
-            statusMessage={betStatus.message}
           />
         );
     }
@@ -334,15 +331,15 @@ export const Lobby = () => {
             </div>
           ) : gamePhase === "IN_ROUND" ? (
             <div className="font-title text-xl text-rose">
-              // DUEL IN PROGRESS - PLACE BETS FOR NEXT ROUND
+              {/* DUEL IN PROGRESS - PLACE BETS FOR NEXT ROUND */}
             </div>
           ) : gamePhase === "POST_ROUND" ? (
             <div className="font-title text-xl text-sage">
-              // ROUND COMPLETE - NEXT DUEL SOON
+              {/* ROUND COMPLETE - NEXT DUEL SOON */}
             </div>
           ) : (
             <div className="font-title text-xl text-subtext1">
-              // WAITING FOR DUELISTS
+              {/* WAITING FOR DUELISTS */}
             </div>
           )}
         </header>
@@ -353,7 +350,7 @@ export const Lobby = () => {
           
           <div>
             <h3 className="mb-2 text-base font-semibold text-subtext1">
-              // AUCTION IN PROGRESS: CONTENDERS
+              {/* AUCTION IN PROGRESS: CONTENDERS */}
             </h3>
             <div className="text-xs text-subtext1" role="row">
               <div className="grid grid-cols-12 gap-2 p-2" role="rowheader">

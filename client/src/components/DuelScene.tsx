@@ -2,7 +2,7 @@
 
 import { useThree } from "@react-three/fiber";
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
-import { useGameStore } from "@/store/useGameStore";
+import { useGameStore, Player } from "@/store/useGameStore";
 import { Fighter } from "./Fighter";
 import { FighterNameLabel } from "./FighterNameLabel";
 
@@ -175,7 +175,7 @@ const ShootingBar = ({
 // ============================================
 // 3D SCENE CONTENT - Renders fighters
 // ============================================
-const DuelSceneContent = ({ fighters }: { fighters: any[] }) => {
+const DuelSceneContent = ({ fighters }: { fighters: Player[] }) => {
   const { invalidate } = useThree();
   
   useEffect(() => {
@@ -227,13 +227,11 @@ export const DuelStage3D = () => {
       });
       
       return topBidders.map((player, index) => ({
-        id: player.id,
-        name: player.name,
-        betAmount: player.betAmount,
-        position: index === 0 ? [0, 0, -3] : [0, 0, 3] as [number, number, number],
+        ...player,
+        position: [index === 0 ? 0 : 0, 0, index === 0 ? -3 : 3],
         rotation: index === 0 ? 0 : Math.PI,
         animationState: 'idle' as const
-      }));
+      } as Player));
     } 
     else if (gamePhase === "IN_ROUND" || gamePhase === "POST_ROUND") {
       if (fighters && fighters.length > 0) {
@@ -270,8 +268,19 @@ export const DuelStage3D = () => {
 // ============================================
 // DUEL UI - Main duel interface logic
 // ============================================
+type RoundEndPayload = {
+  outcome: 'hit' | 'dodge' | 'miss';
+  winnerId?: string;
+  loserId?: string;
+  round: number;
+};
+
+type GamePhasePayload = {
+  phase: string;
+  winnerData?: { name: string; isSplit: boolean; };
+};
 export const DuelUI = () => {
-  const { socket, fighters, gamePhase } = useGameStore();
+  const { socket, gamePhase } = useGameStore();
   const { playClick, playClack, playHammer, playShoot, playGong, playCinematicIntro, stopCinematicIntro } = useAudio();
 
   // UI State
@@ -282,10 +291,6 @@ export const DuelUI = () => {
   const [barPosition, setBarPosition] = useState<number>(0);
   const hasShotThisRound = useRef(false);
   const [isAIMode, setIsAIMode] = useState(false);
-
-  // Narrator State
-  const [showNarrator, setShowNarrator] = useState(false);
-  const [narratorComplete, setNarratorComplete] = useState(false);
 
   // Shooting animation timing
   const shootingStartTime = useRef<number | null>(null);
@@ -318,8 +323,6 @@ export const DuelUI = () => {
   // Reset narrator when returning to lobby
   useEffect(() => {
     if (gamePhase === "LOBBY") {
-      setShowNarrator(false);
-      setNarratorComplete(false);
       shootingStartTime.current = null;
     }
   }, [gamePhase]);
@@ -389,10 +392,8 @@ export const DuelUI = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
 
-    const onShot = ({ shooterId, hit, barPosition, autoMiss }: { 
-      shooterId: string; 
-      hit: boolean; 
-      barPosition: number;
+    const onShot = ({ shooterId, autoMiss }: {
+      shooterId: string;
       autoMiss?: boolean;  // ← Add this parameter
     }) => {
       // ✅ FIX: Skip animations for auto-misses (player didn't shoot)
@@ -455,7 +456,7 @@ export const DuelUI = () => {
     };
 
     // New round
-    const onNewRound = ({ round, message }: { round: number, message?: string }) => {
+    const onNewRound = ({ round }: { round: number }) => {
       console.log(`🔄 NEW ROUND ${round} - Re-enabling controls`);
       
       hasShotThisRound.current = false;
@@ -474,12 +475,7 @@ export const DuelUI = () => {
     };
 
     // Round end - WITH MINIMUM DURATION CHECK
-    const onRoundEnd = ({ outcome, winnerId, loserId, round }: { 
-      outcome: 'hit' | 'dodge' | 'miss',
-      winnerId?: string,
-      loserId?: string,
-      round: number
-    }) => {
+    const onRoundEnd = ({ outcome, winnerId, loserId, round }: RoundEndPayload) => {
       console.log(`📊 ROUND END: outcome=${outcome}, round=${round}`);
       
       setCanClick(false);
@@ -502,7 +498,7 @@ export const DuelUI = () => {
     };
     
     // Extracted round result logic
-    const applyRoundResult = ({ outcome, winnerId, loserId, round }: any) => {
+    const applyRoundResult = ({ outcome, winnerId, loserId, round }: RoundEndPayload) => {
       const currentFighters = useGameStore.getState().fighters;
       
       switch (outcome) {
@@ -540,7 +536,7 @@ export const DuelUI = () => {
     };
 
     // Game phase change
-    const onGamePhaseChange = ({ phase, winnerData }: any) => {
+    const onGamePhaseChange = ({ phase, winnerData }: GamePhasePayload) => {
       console.log(`🎮 GAME PHASE: ${phase}`);
       
       if (phase === "POST_ROUND" && winnerData) {

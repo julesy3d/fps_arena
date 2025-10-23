@@ -16,7 +16,7 @@ export const SocketInitializer = () => {
         socket.disconnect();
       }
     };
-  }, []);
+  }, [connectSocket, socket]);
 
   return null;
 };
