@@ -346,7 +346,16 @@ export const Lobby = () => {
         <div className="hr-dashed" role="presentation" />
 
         <main className="flex flex-col gap-4 p-4">
-          <PlayerTable players={fighters} title="// NEXT MATCH: FIGHTERS [TOP 2 BIDS]" titleClassName="text-subtext1" />
+          {/* UPDATED: Phase-based fighter table header */}
+          <PlayerTable 
+            players={fighters} 
+            title={
+              gamePhase === "IN_ROUND" 
+                ? "// CURRENT DUEL: FIGHTERS [TOP 2 BIDS]"
+                : "// NEXT DUEL: FIGHTERS [TOP 2 BIDS]"
+            }
+            titleClassName="text-subtext1" 
+          />
           
           <div>
             <h3 className="mb-2 text-base font-semibold text-subtext1">

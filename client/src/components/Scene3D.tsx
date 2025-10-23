@@ -34,7 +34,7 @@ export const Scene3D = () => {
                     newPosition = new THREE.Vector3(2, 2, 7);
                 }
             } else {
-                newPosition = new THREE.Vector3(-6, 2, 0);
+                newPosition = new THREE.Vector3(-7, 2, 0);
             }
         } else {
             return;

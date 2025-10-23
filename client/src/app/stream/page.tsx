@@ -1,7 +1,7 @@
 "use client";
 
 import { Canvas } from "@react-three/fiber";
-import React, { Suspense, useEffect, useState } from "react";
+import React, { Suspense, useEffect, useState, useRef } from "react";
 import { Scene3D } from "@/components/Scene3D";
 import { useGameStore } from "@/store/useGameStore";
 import { AsciiRenderer } from "@react-three/drei";
@@ -18,6 +18,202 @@ const Loader = () => (
     LOADING STREAM...
   </div>
 );
+
+// ============================================
+// STREAM ANIMATION CONTROLLER
+// Listens to socket events and updates fighter animations
+// ============================================
+const StreamAnimationController = () => {
+  const { socket } = useGameStore();
+  const cinematicAudioRef = useRef<HTMLAudioElement | null>(null);
+  const gongAudioRef = useRef<HTMLAudioElement | null>(null);
+  const shootAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    console.log("🎵 STREAM CONTROLLER: Loading audio files...");
+    cinematicAudioRef.current = new Audio('/cinematic_intro.aac');
+    gongAudioRef.current = new Audio('/gong.aac');
+    shootAudioRef.current = new Audio('/shoot.aac');
+    
+    cinematicAudioRef.current.load();
+    gongAudioRef.current.load();
+    shootAudioRef.current.load();
+    console.log("✅ STREAM CONTROLLER: Audio files loaded");
+  }, []);
+
+  useEffect(() => {
+    if (!socket) {
+      console.log("⚠️ STREAM CONTROLLER: No socket available yet");
+      return;
+    }
+
+    console.log("🎬 STREAM CONTROLLER: Socket found, initializing event listeners...");
+    console.log(`🔌 STREAM CONTROLLER: Socket ID: ${socket.id}, Connected: ${socket.connected}`);
+
+    const onBothReady = () => {
+      console.log("🎬 STREAM: Both players ready, playing cinematic");
+      console.log("🎵 STREAM: Cinematic audio ref exists:", !!cinematicAudioRef.current);
+      
+      if (cinematicAudioRef.current) {
+        cinematicAudioRef.current.currentTime = 0;
+        console.log("🎵 STREAM: Starting cinematic playback...");
+        cinematicAudioRef.current.play()
+          .then(() => console.log("✅ STREAM: Cinematic audio playing successfully"))
+          .catch(e => console.error('❌ STREAM: Cinematic playback failed:', e));
+      } else {
+        console.error("❌ STREAM: Cinematic audio ref is NULL!");
+      }
+    };
+
+    const onGong = () => {
+      console.log("🔔 STREAM: GONG - Setting fighters to DRAW");
+      if (gongAudioRef.current) {
+        gongAudioRef.current.currentTime = 0;
+        gongAudioRef.current.play().catch(e => console.warn('Gong failed:', e));
+      }
+      if (cinematicAudioRef.current && !cinematicAudioRef.current.paused) {
+        cinematicAudioRef.current.pause();
+        cinematicAudioRef.current.currentTime = 0;
+      }
+
+      const currentFighters = useGameStore.getState().fighters;
+      currentFighters.forEach(f => {
+        useGameStore.getState().updateFighterAnimation(f.id, 'draw');
+      });
+
+      setTimeout(() => {
+        console.log("🔫 STREAM: Draw complete - Setting to ARMED");
+        const fighters = useGameStore.getState().fighters;
+        fighters.forEach(f => {
+          useGameStore.getState().updateFighterAnimation(f.id, 'armed');
+        });
+      }, 1200);
+    };
+
+    const onShot = ({ shooterId, autoMiss }: { shooterId: string; autoMiss?: boolean }) => {
+      if (autoMiss) {
+        console.log(`⏰ STREAM: ${shooterId} auto-missed (no animation)`);
+        return;
+      }
+      
+      console.log(`💥 STREAM: ${shooterId} is shooting!`);
+      if (shootAudioRef.current) {
+        shootAudioRef.current.currentTime = 0;
+        shootAudioRef.current.play().catch(e => console.warn('Shoot sound failed:', e));
+      }
+      useGameStore.getState().updateFighterAnimation(shooterId, 'shooting');
+    };
+
+    const onNewRound = ({ round }: { round: number }) => {
+      console.log(`🔄 STREAM: NEW ROUND ${round} - Re-arming fighters`);
+      const currentFighters = useGameStore.getState().fighters;
+      currentFighters.forEach(f => {
+        useGameStore.getState().updateFighterAnimation(f.id, 'armed');
+      });
+    };
+
+    const onRoundEnd = ({ outcome, winnerId, loserId, round }: { 
+      outcome: 'hit' | 'dodge' | 'miss'; 
+      winnerId?: string; 
+      loserId?: string;
+      round: number;
+    }) => {
+      console.log(`📊 STREAM: ROUND END - outcome: ${outcome}, round: ${round}`);
+      
+      // Delay to let shooting animations play
+      setTimeout(() => {
+        const currentFighters = useGameStore.getState().fighters;
+        
+        switch (outcome) {
+          case 'hit':
+            console.log(`💥 STREAM: ${winnerId} hit ${loserId}`);
+            currentFighters.forEach(f => {
+              if (f.id === winnerId) {
+                useGameStore.getState().updateFighterAnimation(f.id, 'shooting');
+              } else if (f.id === loserId) {
+                useGameStore.getState().updateFighterAnimation(f.id, 'death');
+              }
+            });
+            break;
+            
+          case 'dodge':
+            console.log(`🤺 STREAM: BOTH HIT - DODGE!`);
+            setTimeout(() => {
+              const currentFighters = useGameStore.getState().fighters;
+              currentFighters.forEach(f => {
+                useGameStore.getState().updateFighterAnimation(f.id, 'dodging');
+              });
+            }, 300);
+            break;
+            
+          case 'miss':
+            console.log(`❌ STREAM: BOTH MISSED`);
+            break;
+        }
+      }, 300);
+    };
+
+    const onGamePhaseChange = ({ phase, winnerData }: { 
+      phase: string; 
+      winnerData?: { name: string; isSplit: boolean; };
+    }) => {
+      console.log(`🎮 STREAM: GAME PHASE: ${phase}`);
+      
+      if (phase === "POST_ROUND" && winnerData) {
+        const currentFighters = useGameStore.getState().fighters;
+        
+        if (winnerData.isSplit) {
+          console.log("💀 STREAM: Split pot - both death animations");
+          currentFighters.forEach(f => {
+            useGameStore.getState().updateFighterAnimation(f.id, 'death');
+          });
+        } else {
+          console.log(`🏆 STREAM: ${winnerData.name} wins`);
+          currentFighters.forEach(f => {
+            if (f.name === winnerData.name) {
+              useGameStore.getState().updateFighterAnimation(f.id, 'victory');
+            } else {
+              useGameStore.getState().updateFighterAnimation(f.id, 'death');
+            }
+          });
+        }
+      }
+    };
+
+    socket.on("duel:bothReady", onBothReady);
+    socket.on("duel:gong", onGong);
+    socket.on("duel:shot", onShot);
+    socket.on("duel:newRound", onNewRound);
+    socket.on("duel:roundEnd", onRoundEnd);
+    socket.on("game:phaseChange", onGamePhaseChange);
+
+    console.log("✅ STREAM CONTROLLER: All 6 event listeners registered successfully");
+    console.log("🔍 STREAM CONTROLLER: Testing socket event system...");
+    
+    // Test that socket can receive events
+    socket.on("connect", () => {
+      console.log("🔌 STREAM: Socket connected! ID:", socket.id);
+    });
+    
+    socket.on("disconnect", () => {
+      console.log("⚠️ STREAM: Socket disconnected!");
+    });
+
+    return () => {
+      console.log("🧹 STREAM CONTROLLER: Cleaning up event listeners");
+      socket.off("duel:bothReady", onBothReady);
+      socket.off("duel:gong", onGong);
+      socket.off("duel:shot", onShot);
+      socket.off("duel:newRound", onNewRound);
+      socket.off("duel:roundEnd", onRoundEnd);
+      socket.off("game:phaseChange", onGamePhaseChange);
+      socket.off("connect");
+      socket.off("disconnect");
+    };
+  }, [socket]);
+
+  return null;
+};
 
 // ============================================
 // STREAM MESSAGE DISPLAY - Centered in right panel
@@ -93,19 +289,50 @@ const StreamMessageDisplay = () => {
 };
 
 // ============================================
-// SPECTATOR LOBBY - REUSE YOUR LOBBY COMPONENT
-// Just hide interactive elements
+// SPECTATOR LOBBY - FIXED TO SHOW ALL PLAYERS
 // ============================================
 const SpectatorLobby = () => {
-  const { players, lobbyCountdown, gamePhase, socket } = useGameStore();
+  const { players, lobbyCountdown, gamePhase, socket, isConnected } = useGameStore();
   
-  const getContendersWithBets = () => Object.values(players).filter((p) => p.betAmount > 0);
-  const sortedByBid = getContendersWithBets().sort(
-    (a, b) => b.betAmount - a.betAmount || (a.lastBetTimestamp || 0) - (b.lastBetTimestamp || 0)
+  // Debug: Log player count with full details
+  useEffect(() => {
+    const playerArray = Object.values(players);
+    console.log(`👥 STREAM LOBBY UPDATE:`, {
+      totalPlayers: playerArray.length,
+      playersObject: players,
+      playersList: playerArray.map(p => ({
+        id: p.id,
+        name: p.name,
+        betAmount: p.betAmount,
+        role: p.role
+      })),
+      socketConnected: isConnected,
+      socketId: socket?.id
+    });
+    
+    if (playerArray.length === 0) {
+      console.error('⚠️ STREAM LOBBY: Players object is EMPTY!');
+      console.log('🔍 Checking socket listeners...');
+      console.log('Socket exists:', !!socket);
+      console.log('Socket connected:', socket?.connected);
+    }
+  }, [players, socket, isConnected]);
+  
+  // FIX: Show ALL players, sorted by bet amount
+  const sortedByBid = Object.values(players).sort(
+    (a, b) => (b.betAmount ?? 0) - (a.betAmount ?? 0) || (a.lastBetTimestamp || 0) - (b.lastBetTimestamp || 0)
   );
   
-  const fighters = sortedByBid.slice(0, 2);
+  const fighters = sortedByBid.slice(0, 2).filter(p => p.betAmount > 0);
   const contenders = sortedByBid.slice(2);
+
+  console.log(`🥊 STREAM LOBBY SPLIT:`, {
+    totalSorted: sortedByBid.length,
+    fighters: fighters.length,
+    contenders: contenders.length,
+    fightersData: fighters.map(f => ({ name: f.name, bet: f.betAmount })),
+    contendersData: contenders.map(c => ({ name: c.name, bet: c.betAmount }))
+  });
 
   // Player ranks by net winnings
   const allPlayers = Object.values(players);
@@ -154,7 +381,7 @@ const SpectatorLobby = () => {
   };
 
   return (
-    <div className="h-screen overflow-y-auto bg-base p-4 pt-[20%]">
+    <div className="h-screen overflow-y-auto bg-base p-4 pt-[10%]">
       <div className="border-dashed-ascii bg-ascii-shade">
         {/* Header */}
         <header className="flex items-center justify-between p-3">
@@ -183,7 +410,10 @@ const SpectatorLobby = () => {
           {/* Fighters Table */}
           <div role="grid">
             <h3 className="mb-2 text-base font-semibold text-subtext1">
-              // NEXT MATCH: FIGHTERS [TOP 2 BIDS]
+              {gamePhase === "IN_ROUND" 
+                ? "// CURRENT DUEL: FIGHTERS [TOP 2 BIDS]"
+                : "// NEXT DUEL: FIGHTERS [TOP 2 BIDS]"
+              }
             </h3>
             <div className="text-xs text-subtext1" role="row">
               <div className="grid grid-cols-12 gap-2 p-2" role="rowheader">
@@ -225,7 +455,7 @@ const SpectatorLobby = () => {
               </div>
             </div>
             <div className="hr-dashed" role="presentation" />
-            <div className="max-h-[400px] overflow-y-auto" role="rowgroup">
+            <div className="max-h-[400px] overflow-hidden" role="rowgroup">
               {contenders.length === 0 ? (
                 <div className="p-4 text-center text-xs italic text-subtext0">
                   Waiting for more contenders...
@@ -406,13 +636,43 @@ const ConnectionStatus = () => {
 // MAIN STREAM PAGE
 // ============================================
 export default function StreamPage() {
-  const { gamePhase, isHydrated, connectSocket, roundPot, fighters } = useGameStore();
+  const { gamePhase, isHydrated, connectSocket, roundPot, fighters, players, socket, isConnected } = useGameStore();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    console.log("🎬 STREAM PAGE: Component mounted");
     setMounted(true);
     connectSocket();
+    
+    // Monitor socket for player-related events
+    const checkInterval = setInterval(() => {
+      const state = useGameStore.getState();
+      if (state.socket && !state.socket.hasListeners('lobby:state')) {
+        console.warn("⚠️ STREAM: Socket exists but has no 'lobby:state' listener!");
+      }
+    }, 2000);
+    
+    return () => clearInterval(checkInterval);
   }, [connectSocket]);
+
+  // Debug: Log connection status
+  useEffect(() => {
+    console.log(`📡 STREAM: Connection status - isConnected: ${isConnected}, socket exists: ${!!socket}`);
+  }, [isConnected, socket]);
+
+  // Debug: Log player state changes in real-time
+  useEffect(() => {
+    console.log(`👥 STREAM: Players in store:`, {
+      count: Object.keys(players).length,
+      players: Object.values(players).map(p => ({ id: p.id, name: p.name, betAmount: p.betAmount }))
+    });
+    
+    if (Object.keys(players).length === 0 && isConnected) {
+      console.error("🚨 STREAM CRITICAL: Socket connected but players object is EMPTY!");
+      console.log("🔍 This means server isn't sending 'lobby:state' or 'game:state' events");
+      console.log("💡 Check server-side: Does it emit these events to new connections?");
+    }
+  }, [players, isConnected]);
 
   // Debug logging for animations
   useEffect(() => {
@@ -423,10 +683,18 @@ export default function StreamPage() {
     });
   }, [gamePhase, fighters]);
 
-  if (!mounted) return null;
+  if (!mounted) {
+    console.log("⏳ STREAM: Waiting for mount...");
+    return null;
+  }
+
+  console.log("✅ STREAM: Rendering main content");
 
   return (
     <main className="font-body">
+      {/* Animation controller - invisible but listens to socket events */}
+      <StreamAnimationController />
+
       {/* Split Screen Layout */}
       <div className="grid grid-cols-2 h-screen w-screen overflow-hidden">
         {/* LEFT: Spectator Lobby (reusing your table logic) */}
