@@ -28,7 +28,7 @@ export const WalletContextProvider: FC<{ children: React.ReactNode }> = ({
       new PhantomWalletAdapter(),
       new SolflareWalletAdapter(),
     ],
-    [network],
+    [],
   );
 
   return (

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useGameStore } from "@/store/useGameStore";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Player, useGameStore } from "@/store/useGameStore";
 import { formatTokenAmount, formatTokenChange } from "@/utils/FormatTokenAmount";
 import gsap from "gsap";
 
@@ -49,20 +49,7 @@ export const MoneyTransferBreakdown = () => {
   
   const [isVisible, setIsVisible] = useState(false);
 
-  useEffect(() => {
-    if (gamePhase === "POST_ROUND" && roundWinner && roundPot > 0) {
-      setIsVisible(true);
-      
-      // Animate in after a short delay
-      setTimeout(() => {
-        animateBreakdown();
-      }, 100);
-    } else {
-      setIsVisible(false);
-    }
-  }, [gamePhase, roundWinner, roundPot]);
-
-  const animateBreakdown = () => {
+  const animateBreakdown = useCallback(() => {
     if (!breakdownRef.current) return;
     
     // Slide in the container
@@ -117,15 +104,28 @@ export const MoneyTransferBreakdown = () => {
         });
       }
     }, 600);
-  };
+  }, [roundPot, roundWinner]);
+
+  useEffect(() => {
+    if (gamePhase === "POST_ROUND" && roundWinner && roundPot > 0) {
+      setIsVisible(true);
+
+      // Animate in after a short delay
+      setTimeout(() => {
+        animateBreakdown();
+      }, 100);
+    } else {
+      setIsVisible(false);
+    }
+  }, [gamePhase, roundWinner, roundPot, animateBreakdown]);
 
   if (!isVisible || gamePhase !== "POST_ROUND" || !roundWinner || roundPot <= 0) {
     return null;
   }
 
   const selfId = socket?.id;
-  const wasFighter = fighters.some((f: any) => f.id === selfId);
-  const selfFighter = fighters.find((f: any) => f.id === selfId);
+  const wasFighter = fighters.some((f: Player) => f.id === selfId);
+  const selfFighter = fighters.find((f: Player) => f.id === selfId);
   
   const protocolFee = Math.floor(roundPot * 0.1);
   
@@ -162,7 +162,7 @@ export const MoneyTransferBreakdown = () => {
       <div className="border-dashed-ascii bg-ascii-shade px-6 py-4">
         <div className="font-mono text-sm">
           {/* Header */}
-          <div className="text-xs text-subtext1 mb-3">// POT BREAKDOWN</div>
+          <div className="text-xs text-subtext1 mb-3">{/* POT BREAKDOWN */}</div>
           
           {/* Total */}
           <div className="mb-3">

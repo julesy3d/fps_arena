@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import "./globals.css";
 import { SocketInitializer } from "@/components/SocketInitializer";
 import { WalletContextProvider } from "@/components/WalletContextProvider";

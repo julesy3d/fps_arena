@@ -17,12 +17,6 @@ import { MoneyTransferBreakdown } from "@/components/MoneyTransferBreakdown";
 
 
 
-declare global {
-  interface Window {
-    solana?: any;
-    phantom?: any;
-  }
-}
 
 const Loader = () => (
   <div className="absolute inset-0 z-50 bg-black flex items-center justify-center text-white text-2xl font-bold">
@@ -43,7 +37,7 @@ const StreamPlaceholder = ({ isBlurred }: { isBlurred: boolean }) => (
 );
 
 export default function Home() {
-  const { isHydrated, socket, gamePhase, fighters, roundPot, connectSocket, roundWinner } = useGameStore();
+  const { isHydrated, socket, gamePhase, fighters, roundPot } = useGameStore();
   const { connected } = useWallet();
   const [isLobbyVisible, setLobbyVisible] = useState(false);
   const [isTitleHovered, setTitleHovered] = useState(false);
@@ -162,7 +156,7 @@ export default function Home() {
         <div className="fixed bottom-16 left-1/2 -translate-x-1/2 z-30">
           <div className="border-dashed-ascii bg-ascii-shade px-6 py-3">
             <div className="font-mono text-center">
-              <div className="text-xs text-subtext1 mb-1">// TOTAL POT</div>
+              <div className="text-xs text-subtext1 mb-1">{/* TOTAL POT */}</div>
               <div className="text-2xl font-bold text-amber tracking-wider">
                 {roundPot.toLocaleString()} ◎
               </div>
@@ -177,16 +171,18 @@ export default function Home() {
       {/* Lobby Toggle */}
       <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-40">
         {connected ? (
-          // Fighters: Hide toggle during combat (IN_ROUND only, allow in POST_ROUND)
-          // Spectators: Always show toggle
-          !(gamePhase === "IN_ROUND" && isFighter) && (
-            <button
-              onClick={() => setLobbyVisible((prev) => !prev)}
-              className="text-sm text-white opacity-50 hover:opacity-100"
-            >
-              {isLobbyVisible ? "[CLOSE LOBBY (TAB)]" : "[OPEN LOBBY (TAB)]"}
-            </button>
-          )
+          <>
+            {/* Fighters: Hide toggle during combat (IN_ROUND only, allow in POST_ROUND) */}
+            {/* Spectators: Always show toggle */}
+            {!(gamePhase === "IN_ROUND" && isFighter) && (
+              <button
+                onClick={() => setLobbyVisible((prev) => !prev)}
+                className="text-sm text-white opacity-50 hover:opacity-100"
+              >
+                {isLobbyVisible ? "[CLOSE LOBBY (TAB)]" : "[OPEN LOBBY (TAB)]"}
+              </button>
+            )}
+          </>
         ) : (
           <p className="text-sm text-center text-gray-500">
             [CONNECT YOUR WALLET AND BID TO FIGHT IN THE NEXT ROUND!]
