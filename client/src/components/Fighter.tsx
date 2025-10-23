@@ -20,7 +20,7 @@ export const Fighter = ({ position, rotation = 0, animationState = 'idle' }: Fig
     return SkeletonUtils.clone(scene) as THREE.Group;
   }, [scene]);
   
-  const { actions, names, mixer } = useAnimations(animations, group);
+  const { actions, names } = useAnimations(animations, group);
   
   // ============================================
   // FIX 1: Safety net ALWAYS active at meaningful weight

@@ -44,7 +44,7 @@ export const TitleOverlay = ({ onHover }: TitleOverlayProps) => {
         <div className="absolute top-0 left-0 w-full opacity-0 transition-opacity duration-300 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto">
           <div className="border-dashed-ascii bg-ascii-shade p-4">
             <h2 className="text-lg uppercase tracking-widest text-amber">
-              // Auction & Match Rules
+              {/* Auction & Match Rules */}
             </h2>
             
             <div className="hr-dashed my-4" role="presentation" />
@@ -61,7 +61,7 @@ export const TitleOverlay = ({ onHover }: TitleOverlayProps) => {
                 <div className="hr-dashed my-4" role="presentation" />
                 <div className="flex flex-col items-center">
                   <p className="mb-2 text-xs uppercase text-subtext0">
-                    // Connect Wallet
+                    {/* Connect Wallet */}
                   </p>
                   <WalletMultiButton />
                 </div>
