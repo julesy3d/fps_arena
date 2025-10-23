@@ -316,7 +316,7 @@ export const Lobby = () => {
   if (!hasMounted) return null;
 
   return (
-    <div className="fixed inset-0 z-20 flex flex-col items-center justify-end bg-base p-4 pb-16 text-text">
+    <div className="fixed inset-0 z-20 flex flex-col items-center justify-end bg-base/2 p-4 pb-16 text-text">
       {betStatus.isProcessing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
           <div className="border border-lavender bg-base p-8 text-center">
