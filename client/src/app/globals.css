@@ -126,78 +126,8 @@ body::after {
   line-height: 1;
 }
 
-/* DASHED BORDER - ACTUAL ■ CHARACTERS */
 .border-dashed-ascii {
-  border: none;
-  position: relative;
-  padding: 16px;
-}
-
-/* Top border */
-.border-dashed-ascii::before {
-  content: '############################################################################################################################################################################################################################################################################################################';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 12px;
-  letter-spacing: 0;
-  color: #6a6a6a;
-  white-space: nowrap;
-  overflow: hidden;
-  line-height: 1;
-  height: 12px;
-}
-
-/* Bottom border */
-.border-dashed-ascii::after {
-  content: '############################################################################################################################################################################################################################################################################################################';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 12px;
-  letter-spacing: 0;
-  color: #6a6a6a;
-  white-space: nowrap;
-  overflow: hidden;
-  line-height: 1;
-  height: 12px;
-}
-
-/* Left border - vertical */
-.border-dashed-ascii > *:first-child::before {
-  content: '#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 12px;
-  line-height: 1;
-  letter-spacing: 0;
-  color: #6a6a6a;
-  white-space: pre;
-  overflow: hidden;
-  width: 12px;
-  pointer-events: none;
-}
-
-/* Right border - vertical */
-.border-dashed-ascii > *:last-child::after {
-  content: '#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#\A#';
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 12px;
-  line-height: 1;
-  color: #6a6a6a;
-  white-space: pre;
-  overflow: hidden;
-  width: 12px;
-  pointer-events: none;
+  @apply border border-dashed border-subtext1/30;
+  padding: 16px; /* Kept original padding for layout consistency */
+  /* All pseudo-element rules for top, bottom, left, right ('###') have been removed */
 }
