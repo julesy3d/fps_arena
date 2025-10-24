@@ -188,7 +188,6 @@ const StreamAnimationController = () => {
     socket.on("game:phaseChange", onGamePhaseChange);
 
     console.log("✅ STREAM CONTROLLER: All 6 event listeners registered successfully");
-    console.log("🔍 STREAM CONTROLLER: Testing socket event system...");
     
     // Test that socket can receive events
     socket.on("connect", () => {
@@ -219,44 +218,138 @@ const StreamAnimationController = () => {
 // STREAM MESSAGE DISPLAY - Centered in right panel
 // Adapted from UnifiedMessageDisplay for stream layout
 // ============================================
+
+// Narrator messages from UnifiedMessageDisplay
+interface Message {
+  text: string;
+  duration: number;
+  dramatic?: boolean;
+}
+const NARRATOR_MESSAGES: Message[] = [
+  { text: "well, well, well...", duration: 2000 },
+  { text: "looks like we got ourselves a situation.", duration: 4000 },
+  { text: "at high noon, you will both draw your guns.", duration: 4000 },
+  { text: "one dies,", duration: 4000 },
+  { text: "one gets rich.", duration: 4000 },
+  { text: "HIGH NOON APPROACHES.", duration: 0, dramatic: true },
+];
+
 const StreamMessageDisplay = () => {
-  const { gamePhase, socket } = useGameStore();
+  const { gamePhase, socket, roundWinner } = useGameStore();
   const [currentMessage, setCurrentMessage] = useState<string>("");
   const [isDramatic, setIsDramatic] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
 
+  const [narratorIndex, setNarratorIndex] = useState(0);
+  const [showingNarrator, setShowingNarrator] = useState(false);
+  const narratorHasPlayed = useRef(false);
+
+  const activeTimers = useRef<NodeJS.Timeout[]>([]);
+
+  const clearAllTimers = () => {
+    activeTimers.current.forEach(timer => clearTimeout(timer));
+    activeTimers.current = [];
+  };
+
+  const addTimer = (callback: () => void, delay: number) => {
+    const timer = setTimeout(() => {
+      callback();
+      activeTimers.current = activeTimers.current.filter(t => t !== timer);
+    }, delay);
+    activeTimers.current.push(timer);
+    return timer;
+  };
+
+  // Reset when returning to LOBBY
+  useEffect(() => {
+    if (gamePhase === "LOBBY") {
+      clearAllTimers();
+      narratorHasPlayed.current = false;
+      setShowingNarrator(false);
+      setNarratorIndex(0);
+      setCurrentMessage("");
+      setIsVisible(false);
+    }
+  }, [gamePhase]);
+
+  // Start narrator when entering IN_ROUND
+  useEffect(() => {
+    if (gamePhase === "IN_ROUND" && !narratorHasPlayed.current && !showingNarrator) {
+      narratorHasPlayed.current = true;
+      setShowingNarrator(true);
+      setNarratorIndex(0);
+    }
+  }, [gamePhase, showingNarrator]);
+
+  // Handle narrator sequence
+  useEffect(() => {
+    if (!showingNarrator || narratorIndex >= NARRATOR_MESSAGES.length) return;
+
+    const message = NARRATOR_MESSAGES[narratorIndex];
+    setCurrentMessage(message.text);
+    setIsDramatic(message.dramatic || false);
+    setIsVisible(true);
+
+    if (message.duration === 0) {
+      return;
+    }
+
+    addTimer(() => {
+      setIsVisible(false);
+    }, message.duration);
+
+    addTimer(() => {
+      setNarratorIndex(narratorIndex + 1);
+    }, message.duration + 500);
+
+  }, [showingNarrator, narratorIndex]);
+  
+
+  // Listen for duel messages from socket
   useEffect(() => {
     if (!socket) return;
 
-    const clearMessage = () => {
+    const handleGong = () => {
+      clearAllTimers();
+      setShowingNarrator(false);
       setIsVisible(false);
       setCurrentMessage("");
     };
 
-    const showMessage = (text: string, dramatic: boolean = false, duration: number = 2000) => {
-      setCurrentMessage(text);
-      setIsDramatic(dramatic);
+    const handleNewRound = ({ round }: { round: number }) => {
+      clearAllTimers();
+      
+      setCurrentMessage(`═══ ROUND ${round} ═══`);
+      setIsDramatic(true);
       setIsVisible(true);
       
-      if (duration > 0) {
-        setTimeout(() => setIsVisible(false), duration);
-      }
-    };
-
-    const handleGong = () => {
-      clearMessage();
-    };
-
-    const handleNewRound = ({ round }: { round: number }) => {
-      showMessage(`═══ ROUND ${round} ═══`, true, 1500);
+      addTimer(() => {
+        setIsVisible(false);
+      }, 1500);
     };
 
     const handleBothHit = () => {
-      showMessage("BOTH HIT — DODGE!", true, 1500);
+      clearAllTimers();
+      
+      setCurrentMessage("BOTH HIT — DODGE!");
+      setIsDramatic(true);
+      setIsVisible(true);
+      
+      addTimer(() => {
+        setIsVisible(false);
+      }, 1500);
     };
 
     const handleBothMiss = () => {
-      showMessage("BOTH MISSED!", false, 1500);
+      clearAllTimers();
+      
+      setCurrentMessage("BOTH MISSED!");
+      setIsDramatic(false);
+      setIsVisible(true);
+      
+      addTimer(() => {
+        setIsVisible(false);
+      }, 1500);
     };
 
     socket.on("duel:gong", handleGong);
@@ -271,6 +364,40 @@ const StreamMessageDisplay = () => {
       socket.off("duel:bothMiss", handleBothMiss);
     };
   }, [socket]);
+
+  // === WINNER/LOSER DISPLAY (POST_ROUND) ===
+  useEffect(() => {
+    if (gamePhase === "POST_ROUND" && roundWinner) {
+      clearAllTimers();
+      setShowingNarrator(false);
+      
+      if (roundWinner.isSplit) {
+        // DRAW - POT SPLIT
+        const individualPayout = roundWinner.pot / 2;
+        setCurrentMessage(`DRAW — POT SPLIT`);
+        setIsDramatic(false);
+        setIsVisible(true);
+        
+        addTimer(() => {
+          setCurrentMessage(`Each receives ${individualPayout.toLocaleString()} Lamports`);
+          setIsDramatic(false);
+          setIsVisible(true);
+        }, 2000);
+        
+      } else {
+        // === SPECTATOR VIEW ===
+        setCurrentMessage(`${roundWinner.name} WINS!`);
+        setIsDramatic(true);
+        setIsVisible(true);
+        
+        addTimer(() => {
+          setCurrentMessage(`+${roundWinner.pot.toLocaleString()} Lamports`);
+          setIsDramatic(false);
+          setIsVisible(true);
+        }, 2000);
+      }
+    }
+  }, [gamePhase, roundWinner, socket]);
 
   if (gamePhase === "LOBBY" || !isVisible) return null;
 
@@ -381,7 +508,7 @@ const SpectatorLobby = () => {
   };
 
   return (
-    <div className="h-screen overflow-y-auto bg-base p-4 pt-[10%]">
+    <div className="h-screen overflow-y-auto bg-base p-4 pt-[20%] pb-[10%]">
       <div className="border-dashed-ascii bg-ascii-shade">
         {/* Header */}
         <header className="flex items-center justify-between p-3">
@@ -583,7 +710,7 @@ const SpectatorShootingBars = () => {
               className = 'text-rose';
             } else if (isInTarget) {
               char = '░';
-              className = 'text-sage';
+className = 'text-sage';
             }
             
             return (
@@ -636,24 +763,18 @@ const ConnectionStatus = () => {
 // MAIN STREAM PAGE
 // ============================================
 export default function StreamPage() {
-  const { gamePhase, isHydrated, connectSocket, roundPot, fighters, players, socket, isConnected } = useGameStore();
+  const { gamePhase, isHydrated, roundPot, fighters, players, socket, isConnected } = useGameStore();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     console.log("🎬 STREAM PAGE: Component mounted");
     setMounted(true);
-    connectSocket();
-    
-    // Monitor socket for player-related events
-    const checkInterval = setInterval(() => {
-      const state = useGameStore.getState();
-      if (state.socket && !state.socket.hasListeners('lobby:state')) {
-        console.warn("⚠️ STREAM: Socket exists but has no 'lobby:state' listener!");
-      }
-    }, 2000);
-    
-    return () => clearInterval(checkInterval);
-  }, [connectSocket]);
+    //
+    // 🔴 REMOVED REDUNDANT connectSocket() CALL
+    // The root layout's SocketInitializer is responsible for the connection.
+    // Calling it here was preventing new listeners from being attached.
+    //
+  }, []); // Removed connectSocket from dependency array
 
   // Debug: Log connection status
   useEffect(() => {
