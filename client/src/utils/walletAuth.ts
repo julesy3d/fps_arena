@@ -25,13 +25,18 @@ export async function authenticateWallet(
     const publicKey = wallet.publicKey;
 
     let isResolved = false;
-    let challengeListener: any;
-    let joinedListener: any;
-    let failedListener: any;
+    // eslint-disable-next-line prefer-const
+    let challengeListener: (payload: { message: string }) => Promise<void>;
+    // eslint-disable-next-line prefer-const
+    let joinedListener: () => void;
+    // eslint-disable-next-line prefer-const
+    let failedListener: (errorMessage: string) => void;
+    // eslint-disable-next-line prefer-const
     let timeoutId: NodeJS.Timeout;
-
+    
     // Cleanup function
     const cleanup = () => {
+      // You must check if they've been assigned before cleaning up
       if (challengeListener) socket.off('player:authChallenge', challengeListener);
       if (joinedListener) socket.off('lobby:joined', joinedListener);
       if (failedListener) socket.off('lobby:joinFailed', failedListener);

@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { Canvas } from "@react-three/fiber";
 import React, { Suspense, useEffect, useState } from "react";
 import { Lobby } from "@/components/Lobby";
@@ -53,7 +52,6 @@ export default function Home() {
   }, []);
 
   const isFighter = fighters?.some((g) => g.id === socket?.id) ?? false;
-  const isStreamBlurred = isLobbyVisible && !isFighter;
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

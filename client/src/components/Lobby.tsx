@@ -108,7 +108,7 @@ export const Lobby = () => {
       
       attemptAuth();
     }, 
-    // FIX 3: Removed `isAuthenticating` from the dependency array
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [socket, connected, publicKey, players, selfId, wallet]
   );
 
