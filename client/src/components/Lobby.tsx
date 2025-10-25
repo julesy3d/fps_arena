@@ -75,13 +75,19 @@ export const Lobby = () => {
 
   useEffect(() => {
       const attemptAuth = async () => {
-        // Don't attempt if not ready
-        if (!socket || !connected || !publicKey || isAuthenticating) {
+        // FIX 1: Added !selfId. We are not "ready" until the socket has an ID.
+        if (!socket || !selfId || !connected || !publicKey) {
           return;
         }
         
-        // Already authenticated?
-        if (selfId && players[selfId]) {
+        // This check is fine, it just means we're already authenticated
+        if (players[selfId]) {
+          return;
+        }
+
+        // FIX 2: Added an *internal* check to prevent re-entry
+        // This stops multiple auth attempts from firing at once.
+        if (isAuthenticating) {
           return;
         }
         
@@ -92,14 +98,19 @@ export const Lobby = () => {
           console.log('✅ Wallet authenticated successfully');
         } catch (error) {
           console.error('❌ Wallet authentication failed:', error);
-          alert('Failed to authenticate wallet. Please try reconnecting.');
+          // We can comment out the alert to avoid spamming the user
+          // if they just don't have their wallet open.
+          // alert('Failed to authenticate wallet. Please try reconnecting.');
         } finally {
           setIsAuthenticating(false);
         }
       };
       
       attemptAuth();
-    }, [socket, connected, publicKey, players, selfId, isAuthenticating, wallet]);
+    }, 
+    // FIX 3: Removed `isAuthenticating` from the dependency array
+    [socket, connected, publicKey, players, selfId, wallet]
+  );
 
   const { playerRanks, self } = useMemo(() => {
     const allPlayers = Object.values(players);
@@ -336,7 +347,7 @@ export const Lobby = () => {
   };
 
   if (!hasMounted) return null;
-  
+
   if (isAuthenticating) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">

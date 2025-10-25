@@ -1,5 +1,5 @@
 /**
- * Wallet Authentication Utility
+ * Wallet Authentication Utility - FIXED VERSION
  * Place this at: client/src/utils/walletAuth.ts
  */
 
@@ -21,45 +21,88 @@ export async function authenticateWallet(
       return;
     }
 
-    // Capture signMessage reference to satisfy TypeScript
     const signMessage = wallet.signMessage;
     const publicKey = wallet.publicKey;
 
-    // Request a challenge from the server
-    socket.emit('player:requestChallenge');
+    let isResolved = false;
+    let challengeListener: any;
+    let joinedListener: any;
+    let failedListener: any;
+    let timeoutId: NodeJS.Timeout;
 
-    // Wait for the challenge message
-    socket.once('player:authChallenge', async ({ message }: { message: string }) => {
+    // Cleanup function
+    const cleanup = () => {
+      if (challengeListener) socket.off('player:authChallenge', challengeListener);
+      if (joinedListener) socket.off('lobby:joined', joinedListener);
+      if (failedListener) socket.off('lobby:joinFailed', failedListener);
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+
+    // Timeout handler
+    timeoutId = setTimeout(() => {
+      if (!isResolved) {
+        isResolved = true;
+        cleanup();
+        reject(new Error('Authentication timeout - no response from server'));
+      }
+    }, 30000);
+
+    // Challenge handler
+    challengeListener = async ({ message }: { message: string }) => {
+      console.log('📨 Received auth challenge from server');
+      
       try {
-        // Sign the challenge message with the wallet's private key
+        console.log('🔏 Requesting wallet signature...');
+        
         const messageBytes = new TextEncoder().encode(message);
         const signatureBytes = await signMessage(messageBytes);
         const signature = bs58.encode(signatureBytes);
 
-        // Send the signed authentication to the server
+        console.log('✅ Signature obtained, sending to server');
+
         socket.emit('player:joinWithWallet', {
           walletAddress: publicKey.toBase58(),
           signature,
           message
         });
 
-        // Wait for authentication result
-        socket.once('lobby:joined', () => {
-          resolve();
-        });
-
-        socket.once('lobby:joinFailed', (errorMessage: string) => {
-          reject(new Error(errorMessage));
-        });
-
       } catch (error) {
-        reject(error);
+        console.error('❌ Signature failed:', error);
+        if (!isResolved) {
+          isResolved = true;
+          cleanup();
+          reject(error);
+        }
       }
-    });
+    };
 
-    // Timeout after 30 seconds
-    setTimeout(() => {
-      reject(new Error('Authentication timeout'));
-    }, 30000);
+    // Success handler
+    joinedListener = () => {
+      console.log('✅ Authentication successful!');
+      if (!isResolved) {
+        isResolved = true;
+        cleanup();
+        resolve();
+      }
+    };
+
+    // Failure handler
+    failedListener = (errorMessage: string) => {
+      console.error('❌ Authentication failed:', errorMessage);
+      if (!isResolved) {
+        isResolved = true;
+        cleanup();
+        reject(new Error(errorMessage));
+      }
+    };
+
+    // Register all listeners
+    socket.once('player:authChallenge', challengeListener);
+    socket.once('lobby:joined', joinedListener);
+    socket.once('lobby:joinFailed', failedListener);
+
+    // Request challenge
+    console.log('🚀 Requesting authentication challenge...');
+    socket.emit('player:requestChallenge');
   });
 }

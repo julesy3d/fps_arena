@@ -21,21 +21,6 @@ const Loader = () => (
   </div>
 );
 
-const StreamPlaceholder = ({ isBlurred }: { isBlurred: boolean }) => (
-  <div className="absolute inset-0 -z-20 bg-black">
-    <Image
-      src="https://placehold.co/1920x1080/orange/white"
-      alt="Stream Placeholder"
-      layout="fill"
-      objectFit="cover"
-      priority
-      className={`transition-all duration-300 ${
-        isBlurred ? "filter blur-md grayscale" : ""
-      }`}
-    />
-  </div>
-);
-
 export default function Home() {
   const { isHydrated, socket, gamePhase, fighters, roundPot } = useGameStore();
   const { connected } = useWallet();
@@ -100,8 +85,6 @@ export default function Home() {
 
   return (
     <main className="font-body">
-      <StreamPlaceholder isBlurred={isStreamBlurred} />
-
       <div className="fixed inset-0 top-[-10%] z-[-1]">
         <Suspense fallback={<Loader />}>
           <Canvas
