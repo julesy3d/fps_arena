@@ -1,6 +1,7 @@
+import { Analytics } from "@vercel/analytics/next";
 import type { Metadata } from "next";
 import "./globals.css";
-import { SocketInitializer } from "@/components/SocketInitializer";
+import SocketInitializer from "@/components/SocketInitializer";
 import { WalletContextProvider } from "@/components/WalletContextProvider";
 
 export const metadata: Metadata = {
@@ -20,6 +21,7 @@ export default function RootLayout({
         <WalletContextProvider>
           <SocketInitializer />
           {children}
+          <Analytics />
         </WalletContextProvider>
       </body>
     </html>
