@@ -1,5 +1,5 @@
-import { createClient } from "@supabase/supabase-js";
-import "dotenv/config";
+import { createClient } from '@supabase/supabase-js';
+import 'dotenv/config';
 
 // Initialize the Supabase client
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -13,30 +13,30 @@ const supabase = createClient(supabaseUrl, supabaseKey);
  */
 export const getPlayerStats = async (walletAddress) => {
   let { data: player, error } = await supabase
-    .from("players")
-    .select("*")
-    .eq("wallet_address", walletAddress)
+    .from('players')
+    .select('*')
+    .eq('wallet_address', walletAddress)
     .single();
 
-  if (error && error.code === "PGRST116") {
+  if (error && error.code === 'PGRST116') {
     console.log(`Player not found for ${walletAddress}. Creating new entry.`);
-    
+
     // Default username is shortened wallet address
     const defaultUsername = `${walletAddress.substring(0, 4)}...${walletAddress.substring(walletAddress.length - 4)}`;
-    
+
     const { data: newPlayer, error: insertError } = await supabase
-      .from("players")
+      .from('players')
       .insert({ wallet_address: walletAddress, username: defaultUsername })
       .select()
       .single();
 
     if (insertError) {
-      console.error("Error creating new player:", insertError);
+      console.error('Error creating new player:', insertError);
       return null;
     }
     return newPlayer;
   } else if (error) {
-    console.error("Error fetching player stats:", error);
+    console.error('Error fetching player stats:', error);
     return null;
   }
 
@@ -51,9 +51,9 @@ export const getPlayerStats = async (walletAddress) => {
  */
 export const updatePlayerStats = async (walletAddress, updates) => {
   const { data, error } = await supabase
-    .from("players")
+    .from('players')
     .update(updates)
-    .eq("wallet_address", walletAddress)
+    .eq('wallet_address', walletAddress)
     .select()
     .single();
 
@@ -71,7 +71,7 @@ export const updatePlayerStats = async (walletAddress, updates) => {
  * @param {number} value The value to increment by.
  */
 export const incrementPlayerStat = async (walletAddress, field, value) => {
-  const { error } = await supabase.rpc("increment_stat", {
+  const { error } = await supabase.rpc('increment_stat', {
     p_wallet_address: walletAddress,
     p_field: field,
     p_value: value,
@@ -91,12 +91,12 @@ export async function logTransaction(transactionData) {
     .insert([transactionData])
     .select()
     .single();
-  
+
   if (error) {
     console.error('Failed to log transaction:', error);
     return null;
   }
-  
+
   return data.id;
 }
 
@@ -105,7 +105,7 @@ export async function updateTransaction(txId, updates) {
     .from('payout_transactions')
     .update(updates)
     .eq('id', txId);
-  
+
   if (error) {
     console.error('Failed to update transaction:', error);
   }

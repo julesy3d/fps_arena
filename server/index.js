@@ -1,7 +1,9 @@
-// ============================================
-// CLEAN DUEL SYSTEM - SERVER AUTHORITY
-// MVP: Simple, fair, server-controlled duels
-// ============================================
+/**
+ * @file index.js
+ * @description Main server file for the PotShot.gg game.
+ * This file sets up the Express server, Socket.IO connection, and handles all
+ * server-authoritative game logic, including lobby management, betting, and duels.
+ */
 
 import express from "express";
 import http from "http";
@@ -20,9 +22,6 @@ import {
 const app = express();
 const server = http.createServer(app);
 
-// ============================================
-// OPTIMIZED SOCKET.IO FOR 2 FIGHTERS + SPECTATORS
-// ============================================
 const CLIENT_URL = process.env.CLIENT_URL;
 
 const io = new Server(server, {
@@ -31,38 +30,17 @@ const io = new Server(server, {
       "http://localhost:3000",
       "https://txfhjhrt-3000.uks1.devtunnels.ms",
       "https://scaling-space-acorn-rrp7w7j9xwphwj47-3000.app.github.dev",
-      CLIENT_URL, // Add the production URL here
-    ].filter(Boolean), // This safely removes CLIENT_URL if it's not set
+      CLIENT_URL,
+    ].filter(Boolean),
     methods: ["GET", "POST"],
   },
-  
-  // ============================================
-  // PERFORMANCE: Force WebSocket, skip polling
-  // ============================================
   transports: ['websocket'],
-  
-  // ============================================
-  // PERFORMANCE: Disable compression for speed
-  // Trade-off: 2-3x more bandwidth, but negligible for small messages
-  // ============================================
   perMessageDeflate: false,
-  
-  // ============================================
-  // CONNECTION: Aggressive timeouts for real-time
-  // ============================================
-  pingTimeout: 60000,    // 60s - consider connection dead
-  pingInterval: 25000,   // 25s - keep-alive ping
-  upgradeTimeout: 10000, // 10s - faster WebSocket upgrade
-  
-  // ============================================
-  // BUFFER: Smaller = faster processing
-  // ============================================
-  maxHttpBufferSize: 1e6, // 1MB (you send tiny messages)
-  
-  // ============================================
-  // MISC: Simplify connection
-  // ============================================
-  cookie: false, // No session cookies needed
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  upgradeTimeout: 10000,
+  maxHttpBufferSize: 1e6,
+  cookie: false,
   allowUpgrades: true,
 });
 
@@ -76,9 +54,7 @@ let TREASURY_KEYPAIR;
 try {
   const privateKeyBytes = bs58.decode(process.env.TREASURY_PRIVATE_KEY);
   TREASURY_KEYPAIR = Keypair.fromSecretKey(privateKeyBytes);
-  console.log("✅ Treasury wallet loaded:", TREASURY_KEYPAIR.publicKey.toBase58());
 } catch (error) {
-  console.error("❌ Failed to load treasury private key:", error);
   process.exit(1);
 }
 
@@ -92,36 +68,36 @@ let activeFighterIds = new Set();
 let roundPot = 0;
 
 // ============================================
-// DUEL STATE - SYNCHRONIZED MULTI-ROUND
+// DUEL STATE
 // ============================================
-let duelState = "WAITING"; // WAITING | DRAW_PHASE | AIM_PHASE | FINISHED
+let duelState = "WAITING";
 let gongTime = null;
 let duelTimerIntervalId = null;
-let duelMaxDuration = 30000; // 30s for multi-round
+let duelMaxDuration = 30000;
 
-// Round tracking
 let currentRound = 1;
 let synchronizedBarStartTime = null;
 
-// Per-player duel data
-let duelData = {}; // { [socketId]: { hasDrawn, drawTime, hasFired, shotResult, isPickingUpGun } }
+let duelData = {};
 
-// Bar configuration - gets faster each round
+/**
+ * @function getBarCycleDuration
+ * @description Calculates the duration of the shooting bar cycle for a given round.
+ * The duration decreases exponentially with each round, making it harder.
+ * @param {number} round - The current duel round number.
+ * @returns {number} The duration of the bar cycle in milliseconds.
+ */
 const getBarCycleDuration = (round) => {
-  // --- Exponential Difficulty Curve (MUCH FASTER) ---
-  const baseDuration = 2200; // Round 1 stays the same
-  const speedFactor = 0.65;  // Each round is 65% as long (was 75%)
-  
+  const baseDuration = 2200;
+  const speedFactor = 0.65;
   const duration = baseDuration * Math.pow(speedFactor, round - 1);
-  
-  const minimumDuration = 500; // Harder minimum (was 800ms)
-  
+  const minimumDuration = 500;
   return Math.max(duration, minimumDuration);
 };
 
-const BAR_TARGET_MIN = 0.60;     // 60%
-const BAR_TARGET_MAX = 0.80;     // 80%
-const DRAW_WINDOW = 1500;        // 1.5s to draw after GONG
+const BAR_TARGET_MIN = 0.60;
+const BAR_TARGET_MAX = 0.80;
+const DRAW_WINDOW = 1500;
 
 // ============================================
 // CONSTANTS
@@ -147,19 +123,18 @@ const stopLobbyCountdown = () => {
   }
 };
 
-// ============================================
-// DUEL: START SEQUENCE
-// ============================================
+/**
+ * @function startDuel
+ * @description Initializes the state for a new duel between the top two bidders.
+ * Sets up player positions, health, and duel-specific data.
+ */
 const startDuel = () => {
-  console.log("🔫 Starting duel sequence...");
-  
   duelState = "WAITING";
   gongTime = null;
   duelData = {};
   currentRound = 1;
   synchronizedBarStartTime = null;
   
-  // Position fighters
   const fighterIds = Array.from(activeFighterIds);
   fighterIds.forEach((id, index) => {
     const player = players[id];
@@ -169,19 +144,17 @@ const startDuel = () => {
       player.health = 1;
     }
     
-    // Initialize duel data
     duelData[id] = {
       hasDrawn: false,
       drawTime: null,
       hasFired: false,
-      shotResult: null, // Will be 'hit', 'miss', or null
+      shotResult: null,
       isAI: false,
       aiShotAttempted: false,
       isReady: false,
     };
   });
   
-  // Broadcast initial state
   io.emit("duel:state", { 
     state: "WAITING",
     fighters: fighterIds.map(id => ({
@@ -194,17 +167,16 @@ const startDuel = () => {
   });
 };
 
-// ============================================
-// DUEL: SEND GONG - GO STRAIGHT TO AIM PHASE
-// ============================================
+/**
+ * @function sendGong
+ * @description Initiates the aiming phase of the duel.
+ * Emits the 'gong' event to clients and starts the synchronized bar update loop.
+ */
 const sendGong = () => {
-  console.log(`🔔 GONG! - GOING STRAIGHT TO AIM PHASE`);
-  
   duelState = "AIM_PHASE";
   gongTime = Date.now();
   synchronizedBarStartTime = Date.now();
   
-  // Mark all fighters as having "drawn" (skip draw mechanic)
   const fighterIds = Array.from(activeFighterIds);
   fighterIds.forEach(id => {
     if (duelData[id]) {
@@ -213,47 +185,40 @@ const sendGong = () => {
     }
   });
   
-  // Tell all fighters to start aiming
   io.emit("duel:gong", { 
     barCycleDuration: getBarCycleDuration(currentRound)
   });
   
-  // Immediately start aim phase
   io.emit("duel:aimPhase", {
     startTime: synchronizedBarStartTime,
     barCycleDuration: getBarCycleDuration(currentRound)
   });
   
-  console.log(`🎯 AIM PHASE - Round ${currentRound} (${getBarCycleDuration(currentRound)}ms cycle)`);
-  
-  // ADDED: AI automatically shoots after a short, realistic delay
   fighterIds.forEach(id => {
     if (duelData[id]?.isAI) {
-      const aiDrawDelay = 200 + Math.random() * 300; // 200-500ms reaction
+      const aiDrawDelay = 200 + Math.random() * 300;
       setTimeout(() => {
-        console.log(`🤖 AI ${players[id].name} is preparing to shoot...`);
       }, aiDrawDelay);
     }
   });
   
-  // Start synchronized bar broadcasts
   startBarUpdateLoop();
   
-  // Start 30-second overall timeout (MOVED HERE from startDuel)
   if (duelTimerIntervalId) {
     clearTimeout(duelTimerIntervalId);
   }
   duelTimerIntervalId = setTimeout(() => {
-    console.log("⏱️ Duel timeout (30s)");
     endDuel("TIMEOUT");
   }, duelMaxDuration);
 };
 
-// ============================================
-// DUEL: BAR UPDATE LOOP (SYNCHRONIZED)
-// ============================================
 let barUpdateIntervalId = null;
 
+/**
+ * @function startBarUpdateLoop
+ * @description Starts a loop that broadcasts the synchronized position of the shooting bar to all clients.
+ * Also handles AI shooting logic and auto-miss conditions.
+ */
 const startBarUpdateLoop = () => {
   if (barUpdateIntervalId) {
     clearInterval(barUpdateIntervalId);
@@ -276,32 +241,24 @@ const startBarUpdateLoop = () => {
 
     const fighterIds = Array.from(activeFighterIds);
 
-    // --- AI Shooting Logic ---
     fighterIds.forEach(id => {
       const playerData = duelData[id];
       if (playerData?.isAI && !playerData.hasFired && !playerData.aiShotAttempted) {
-        // AI makes its one decision for the round as soon as the bar enters the target zone
         if (position >= BAR_TARGET_MIN) {
-          playerData.aiShotAttempted = true; // Prevents re-rolling on subsequent frames
+          playerData.aiShotAttempted = true;
 
           if (Math.random() < 0.8) {
-            // SUCCESS: Shoot now
-            console.log(`🤖 AI ${players[id].name} is shooting...`);
             handleShoot(id);
           } else {
-            // FAILURE: Do nothing. Let the auto-miss rule handle it.
-            console.log(`🤖 AI ${players[id].name} decided to wait (will auto-miss).`);
           }
         }
       }
     });
 
-    // --- Auto-Miss Logic ---
     if (position > BAR_TARGET_MAX) {
       fighterIds.forEach(id => {
         const playerData = duelData[id];
         if (playerData && !playerData.hasFired) {
-          console.log(`⏰ ${players[id].name} auto-missed (too slow)`);
           playerData.hasFired = true;
           playerData.shotResult = 'miss';
           io.emit("duel:shot", { 
@@ -313,7 +270,6 @@ const startBarUpdateLoop = () => {
       });
     }
 
-    // --- Round End Check ---
     const bothFired = fighterIds.every(id => duelData[id]?.hasFired);
     if (bothFired) {
       evaluateRoundResults();
@@ -322,9 +278,12 @@ const startBarUpdateLoop = () => {
   }, 1000 / 60);
 };
 
-// ============================================
-// DUEL: HANDLE SHOOT
-// ============================================
+/**
+ * @function handleShoot
+ * @description Processes a 'shoot' action from a player.
+ * Validates the shot, determines if it was a hit or miss, and broadcasts the result.
+ * @param {string} socketId - The socket ID of the player who shot.
+ */
 const handleShoot = (socketId) => {
   const player = players[socketId];
   const playerData = duelData[socketId];
@@ -333,54 +292,39 @@ const handleShoot = (socketId) => {
     return;
   }
   
-  // Must have drawn first
   if (!playerData.hasDrawn) {
-    console.log(`⚠️ ${player.name} tried to shoot without drawing`);
     return;
   }
   
-  // Must be in aim phase
   if (duelState !== "AIM_PHASE") {
-    console.log(`⚠️ ${player.name} tried to shoot outside aim phase`);
     return;
   }
   
-  // Can't shoot while picking up gun
   if (playerData.isPickingUpGun) {
-    console.log(`⚠️ ${player.name} tried to shoot while picking up gun`);
     return;
   }
   
-  // Already fired this round
   if (playerData.hasFired) {
-    console.log(`⚠️ ${player.name} already fired this round`);
     return;
   }
   
-  // Calculate bar position RIGHT NOW from synchronized bar
   const now = Date.now();
   const elapsed = now - synchronizedBarStartTime;
   const cycleDuration = getBarCycleDuration(currentRound);
   const cycles = elapsed / cycleDuration;
   const barPosition = cycles % 1;
   
-  // Check if in target zone
   const isHit = barPosition >= BAR_TARGET_MIN && barPosition <= BAR_TARGET_MAX;
   
-  console.log(`💥 ${player.name} SHOOTS at ${(barPosition * 100).toFixed(1)}% - ${isHit ? 'HIT' : 'MISS'}`);
-  
-  // Record result
   playerData.hasFired = true;
   playerData.shotResult = isHit ? 'hit' : 'miss';
   
-  // Broadcast shot
   io.emit("duel:shot", { 
     shooterId: socketId, 
     hit: isHit,
     barPosition 
   });
   
-  // Check if both have fired
   const fighterIds = Array.from(activeFighterIds);
   const bothFired = fighterIds.every(id => duelData[id]?.hasFired);
   
@@ -389,13 +333,13 @@ const handleShoot = (socketId) => {
   }
 };
 
-// ============================================
-// DUEL: EVALUATE ROUND RESULTS
-// ============================================
+/**
+ * @function evaluateRoundResults
+ * @description Evaluates the results of a duel round after both players have acted.
+ * Determines the outcome (win, loss, dodge, miss) and triggers the next state.
+ */
 const evaluateRoundResults = () => {
   if (duelState !== "AIM_PHASE") return;
-  console.log(`📊 Evaluating round ${currentRound} results...`);
-  
   duelState = "EVALUATING";
 
   if (barUpdateIntervalId) {
@@ -407,24 +351,14 @@ const evaluateRoundResults = () => {
   const [p1Id, p2Id] = fighterIds;
   const p1Result = duelData[p1Id]?.shotResult;
   const p2Result = duelData[p2Id]?.shotResult;
-
-  console.log(`  ${players[p1Id].name}: ${p1Result}`);
-  console.log(`  ${players[p2Id].name}: ${p2Result}`);
-  
-  // ============================================
-  // CRITICAL CHANGE: Determine outcome FIRST
-  // Then emit ONLY ONE event per outcome
-  // ============================================
   
   let outcome = null;
 
-  // Forfeit cases
   if (p1Result === 'forfeit') {
     outcome = (p2Result === 'hit') ? 'p2_wins' : 'advance';
   } else if (p2Result === 'forfeit') {
     outcome = (p1Result === 'hit') ? 'p1_wins' : 'advance';
   }
-  // Normal cases
   else if (p1Result === 'hit' && p2Result === 'hit') {
     outcome = 'dodge';
   } else if (p1Result === 'hit' && p2Result === 'miss') {
@@ -435,15 +369,10 @@ const evaluateRoundResults = () => {
     outcome = 'advance_miss';
   }
 
-  // ============================================
-  // Execute outcome - ONE EVENT PER OUTCOME
-  // ============================================
   switch (outcome) {
     case 'p1_wins':
-      console.log(`🎯 ${players[p1Id].name} WINS!`);
       players[p2Id].health = 0;
       
-      // ONE event: winner shot successfully
       io.emit("duel:roundEnd", { 
         outcome: 'hit',
         winnerId: p1Id,
@@ -455,10 +384,8 @@ const evaluateRoundResults = () => {
       break;
       
     case 'p2_wins':
-      console.log(`🎯 ${players[p2Id].name} WINS!`);
       players[p1Id].health = 0;
       
-      // ONE event: winner shot successfully
       io.emit("duel:roundEnd", { 
         outcome: 'hit',
         winnerId: p2Id,
@@ -470,9 +397,6 @@ const evaluateRoundResults = () => {
       break;
       
     case 'dodge':
-      console.log(`🤺 BOTH HIT - DODGE! Advancing to round ${currentRound + 1}`);
-      
-      // ONE event: both hit, everyone dodges
       io.emit("duel:roundEnd", { 
         outcome: 'dodge',
         round: currentRound
@@ -482,9 +406,6 @@ const evaluateRoundResults = () => {
       break;
       
     case 'advance_miss':
-      console.log(`❌ BOTH MISS - Advancing to round ${currentRound + 1}`);
-      
-      // ONE event: both missed
       io.emit("duel:roundEnd", { 
         outcome: 'miss',
         round: currentRound
@@ -494,8 +415,6 @@ const evaluateRoundResults = () => {
       break;
       
     case 'advance':
-      console.log(`- No scoring this round. Advancing to round ${currentRound + 1}`);
-      
       io.emit("duel:roundEnd", { 
         outcome: 'miss',
         round: currentRound
@@ -506,12 +425,13 @@ const evaluateRoundResults = () => {
   }
 };
 
-// ============================================
-// DUEL: ADVANCE TO NEXT ROUND (SHOOTING CONTINUES)
-// ============================================
+/**
+ * @function advanceRound
+ * @description Advances the duel to the next round.
+ * Resets round-specific state and notifies clients.
+ */
 const advanceRound = () => {
   currentRound++;
-  console.log(`⏭️ ADVANCING TO ROUND ${currentRound}`);
 
   const fighterIds = Array.from(activeFighterIds);
   fighterIds.forEach(id => {
@@ -522,27 +442,24 @@ const advanceRound = () => {
     }
   });
 
-  console.log(`📡 SERVER: Emitting duel:newRound for round ${currentRound}`);
   io.emit("duel:newRound", {
     round: currentRound,
     barCycleDuration: getBarCycleDuration(currentRound),
     message: `ROUND ${currentRound}!`
   });
 
-  // Reset bar and restart
   duelState = "AIM_PHASE";
   synchronizedBarStartTime = Date.now();
-  console.log(`▶️ SERVER: Restarting bar update loop for round ${currentRound}`);
   startBarUpdateLoop();
 };
 
-// ============================================
-// DUEL: END
-// ============================================
+/**
+ * @function endDuel
+ * @description Ends the current duel.
+ * @param {string} reason - The reason the duel ended (e.g., "WINNER", "TIMEOUT").
+ * @param {object|null} winner - The winning player object, if any.
+ */
 const endDuel = (reason, winner = null) => {
-  console.log(`🏁 Duel ending: ${reason}`);
-  
-  // CRITICAL: Clear ALL timers to prevent loops
   if (duelTimerIntervalId) {
     clearTimeout(duelTimerIntervalId);
     duelTimerIntervalId = null;
@@ -552,25 +469,23 @@ const endDuel = (reason, winner = null) => {
     barUpdateIntervalId = null;
   }
   
-  // Stop any ongoing processes
   duelState = "FINISHED";
   synchronizedBarStartTime = null;
   
-  // Determine payout
   let isSplit = false;
   
   if (reason === "TIMEOUT") {
-    console.log("⏱️ Timeout - splitting pot");
     isSplit = true;
   }
   
-  // Call existing endRound function
   endRound(winner, isSplit);
 };
 
-// ============================================
-// EXISTING: finalizeAuction
-// ============================================
+/**
+ * @function finalizeAuction
+ * @description Finalizes the betting auction and starts the duel.
+ * Calculates the total pot and sets the initial state for the duel.
+ */
 const finalizeAuction = () => {
   stopLobbyCountdown();
   gamePhase = "IN_ROUND";
@@ -578,9 +493,7 @@ const finalizeAuction = () => {
   activeFighterIds.clear();
   const finalFighters = [];
 
-  // Calculate pot
   roundPot = Object.values(players).reduce((sum, player) => sum + player.betAmount, 0);
-  console.log(`💰 Round pot: ${roundPot} lamports`); // Debug log
 
   for (const id of fighterIds) {
     const player = players[id];
@@ -606,15 +519,13 @@ const finalizeAuction = () => {
         incrementPlayerStat(p.walletAddress, "net_winnings", -p.betAmount);
       }
     } catch (error) {
-      console.error(`Failed to update stats for ${p.walletAddress}:`, error);
     }
   });
 
-  // CHANGED: Add roundPot to the emission
   io.emit("game:phaseChange", { 
     phase: "IN_ROUND", 
     fighters: finalFighters,
-    roundPot: roundPot  // ← ADDED THIS LINE
+    roundPot: roundPot
   });
   
   broadcastLobbyState();
@@ -650,21 +561,20 @@ const checkAndManageCountdown = (previousTopFighterIds = []) => {
   }
 };
 
-// ============================================
-// EXISTING: endRound (unchanged)
-// ============================================
+/**
+ * @function endRound
+ * @description Handles the end of a round, including payouts and state reset.
+ * @param {object|null} winner - The winning player object.
+ * @param {boolean} isSplitPot - Whether the pot should be split.
+ */
 const endRound = async (winner, isSplitPot = false) => {
     gamePhase = "POST_ROUND";
     const roundId = `round_${Date.now()}`;
-    console.log(`Entering POST_ROUND. Round ID: ${roundId}`);
-    console.log(`Winner: ${winner ? winner.name : 'Split Pot'}`);
 
     const protocolFee = Math.floor(roundPot * 0.1);
     
     if (isSplitPot) {
       const splitAmount = Math.floor((roundPot * 0.9) / 2);
-      console.log(`Protocol fee (10%): ${protocolFee} lamports`);
-      console.log(`Split payout (45% each): ${splitAmount} lamports`);
       
       try {
         await logTransaction({
@@ -677,7 +587,6 @@ const endRound = async (winner, isSplitPot = false) => {
           confirmed_at: new Date()
         });
       } catch (error) {
-        console.error("Failed to log protocol fee:", error);
       }
       
       const fighterIds = Array.from(activeFighterIds);
@@ -719,13 +628,10 @@ const endRound = async (winner, isSplitPot = false) => {
             });
           }
           
-          console.log(`💰 Paid ${splitAmount} lamports to ${fighter.name}: ${payoutSignature}`);
-          
           const netGain = splitAmount - fighter.betAmount;
           incrementPlayerStat(fighter.walletAddress, "net_winnings", netGain);
           
         } catch (error) {
-          console.error(`❌ Split payout failed for ${fighter.name}:`, error);
           if (payoutTxId) {
             await updateTransaction(payoutTxId, {
               status: 'failed',
@@ -746,8 +652,6 @@ const endRound = async (winner, isSplitPot = false) => {
       
     } else {
       const winnerPayout = Math.floor(roundPot * 0.9);
-      console.log(`Protocol fee (10%): ${protocolFee} lamports`);
-      console.log(`Winner payout (90%): ${winnerPayout} lamports`);
 
       try {
         await logTransaction({
@@ -760,7 +664,6 @@ const endRound = async (winner, isSplitPot = false) => {
           confirmed_at: new Date()
         });
       } catch (error) {
-        console.error("Failed to log protocol fee:", error);
       }
 
       if (winner && winnerPayout > 0) {
@@ -798,9 +701,7 @@ const endRound = async (winner, isSplitPot = false) => {
             });
           }
           
-          console.log(`💰 Paid ${winnerPayout} lamports to ${winner.name}: ${payoutSignature}`);
         } catch (error) {
-          console.error("❌ Payout transaction failed:", error);
           if (payoutTxId) {
             await updateTransaction(payoutTxId, {
               status: 'failed',
@@ -816,7 +717,6 @@ const endRound = async (winner, isSplitPot = false) => {
           const netGain = winnerPayout - winner.betAmount;
           incrementPlayerStat(winner.walletAddress, "net_winnings", netGain);
         } catch (error) {
-          console.error(`Failed to update winner stats:`, error);
         }
       }
 
@@ -828,7 +728,6 @@ const endRound = async (winner, isSplitPot = false) => {
             incrementPlayerStat(fighter.walletAddress, "deaths", 1);
             incrementPlayerStat(fighter.walletAddress, "net_winnings", -fighter.betAmount);
           } catch (error) {
-            console.error(`Failed to update loser stats for ${fighter.walletAddress}:`, error);
           }
         }
       });
@@ -840,7 +739,6 @@ const endRound = async (winner, isSplitPot = false) => {
     }
 
     setTimeout(async () => {
-      console.log("Resetting to LOBBY phase...");
       gamePhase = "LOBBY";
 
       for (const p of Object.values(players)) {
@@ -858,7 +756,6 @@ const endRound = async (winner, isSplitPot = false) => {
             };
           }
         } catch (error) {
-          console.error(`Failed to refresh stats for ${p.walletAddress}:`, error);
         }
       }
 
@@ -870,22 +767,16 @@ const endRound = async (winner, isSplitPot = false) => {
     }, 10000);
 };
 
-// ============================================
-// SOCKET CONNECTION
-// ============================================
 const betRequestTimestamps = new Map();
 const BET_REQUEST_COOLDOWN = 3000;
 const MIN_BET = 1000;
 const MAX_BET = 1000000000;
 
 io.on("connection", (socket) => {
-  console.log("✅ A user connected:", socket.id);
   socket.emit("game:phaseChange", { phase: gamePhase });
   socket.emit("lobby:state", players);
   socket.emit("lobby:countdown", lobbyCountdown);
 
-  // ... [Keep all existing socket handlers for lobby/betting - unchanged] ...
-  
   socket.on("player:joinWithWallet", async ({ walletAddress }) => {
     if (!walletAddress || Object.values(players).find(p => p.walletAddress === walletAddress)) return;
 
@@ -893,13 +784,12 @@ io.on("connection", (socket) => {
       const playerData = await getPlayerStats(walletAddress);
       if (!playerData) return;
 
-      // Use username from database, fallback to "unknown player" (edge case)
       let playerName = playerData.username || "unknown player";
 
       players[socket.id] = {
         id: socket.id,
         walletAddress: walletAddress,
-        name: playerName,  // Will be shortened wallet address by default
+        name: playerName,
         role: "CONTENDER",
         betAmount: 0,
         lastBetTimestamp: null,
@@ -917,7 +807,6 @@ io.on("connection", (socket) => {
       socket.emit("lobby:joined", { name: players[socket.id].name });
       broadcastLobbyState();
     } catch (error) {
-      console.error(`Failed to join player ${walletAddress}:`, error);
     }
   });
 
@@ -929,7 +818,6 @@ io.on("connection", (socket) => {
         updatePlayerStats(player.walletAddress, { username: playerName });
         broadcastLobbyState();
       } catch (error) {
-        console.error(`Failed to update player name:`, error);
       }
     }
   });
@@ -940,32 +828,23 @@ io.on("connection", (socket) => {
       return socket.emit("lobby:betFailed", "Player not found.");
     }
 
-    console.log(`\n========== BET REQUEST ==========`);
-    console.log(`Player: ${player.name} (${player.walletAddress})`);
-    console.log(`Amount: ${amount} lamports`);
-
     const lastRequest = betRequestTimestamps.get(socket.id) || 0;
     if (Date.now() - lastRequest < BET_REQUEST_COOLDOWN) {
-      console.log(`❌ Rate limited`);
       return socket.emit("lobby:betFailed", "Please wait before placing another bet.");
     }
     betRequestTimestamps.set(socket.id, Date.now());
 
     if (amount < MIN_BET || amount > MAX_BET) {
-      console.log(`❌ Invalid amount (min: ${MIN_BET}, max: ${MAX_BET})`);
       return socket.emit("lobby:betFailed", `Bet must be between ${MIN_BET} and ${MAX_BET} lamports.`);
     }
 
     try {
       const playerBalance = await connection.getBalance(new PublicKey(player.walletAddress));
-      console.log(`Player balance: ${playerBalance} lamports`);
       
       if (playerBalance < amount + 5000) {
-        console.log(`❌ Insufficient balance`);
         return socket.emit("lobby:betFailed", "Insufficient SOL balance for bet + fees");
       }
 
-      console.log(`Creating transaction...`);
       const tx = new Transaction().add(
         SystemProgram.transfer({
           fromPubkey: new PublicKey(player.walletAddress),
@@ -975,7 +854,6 @@ io.on("connection", (socket) => {
       );
 
       const { blockhash } = await connection.getLatestBlockhash();
-      console.log(`Blockhash: ${blockhash}`);
       
       tx.recentBlockhash = blockhash;
       tx.feePayer = new PublicKey(player.walletAddress);
@@ -983,13 +861,9 @@ io.on("connection", (socket) => {
       const serializedTx = tx.serialize({ 
         requireAllSignatures: false 
       }).toString('base64');
-
-      console.log(`Transaction created, sending to client for signing`);
-      console.log(`========== BET REQUEST COMPLETE ==========\n`);
       
       socket.emit("lobby:signatureRequest", { serializedTx, amount });
     } catch (error) {
-      console.error(`❌ Error creating transaction:`, error);
       socket.emit("lobby:betFailed", "Failed to create transaction.");
     }
   });
@@ -1000,14 +874,9 @@ io.on("connection", (socket) => {
       return socket.emit("lobby:betFailed", "Player not found.");
     }
 
-    console.log(`\n========== SIGNED BET SUBMISSION ==========`);
-    console.log(`Player: ${player.name} (${player.walletAddress})`);
-    console.log(`Amount: ${amount} lamports`);
-
     const previousTopFighterIds = getTopFighterIds();
 
     try {
-      console.log(`Deserializing transaction...`);
       const tx = Transaction.from(Buffer.from(serializedTx, 'base64'));
       
       const systemInstructions = tx.instructions.filter(instr => 
@@ -1050,16 +919,13 @@ io.on("connection", (socket) => {
         throw new Error("Wrong recipient wallet");
       }
 
-      console.log(`Sending transaction to Solana network...`);
       const signature = await connection.sendRawTransaction(tx.serialize(), {
         skipPreflight: true,
         preflightCommitment: 'confirmed'
       });
       
-      console.log(`Transaction sent: ${signature}`);
       await connection.confirmTransaction(signature, 'confirmed');
       
-      console.log(`✅ Transaction confirmed!`);
 
       player.betAmount += amount;
       player.lastBetTimestamp = Date.now();
@@ -1069,7 +935,6 @@ io.on("connection", (socket) => {
       checkAndManageCountdown(previousTopFighterIds);
 
     } catch (error) {
-      console.error(`\n❌ BET VERIFICATION FAILED:`, error);
       
       let errorMessage = "Transaction failed";
       if (error.message.includes("insufficient")) {
@@ -1090,10 +955,6 @@ io.on("connection", (socket) => {
     }
   });
   
-  // ============================================
-  // DUEL SOCKET HANDLERS
-  // ============================================
-  
   socket.on("duel:shoot", () => {
     handleShoot(socket.id);
   });
@@ -1101,22 +962,17 @@ io.on("connection", (socket) => {
   socket.on("duel:playerReady", () => {
     const playerId = socket.id;
     if (duelData[playerId]) {
-      console.log(`✅ Player ${players[playerId].name} is ready.`);
       duelData[playerId].isReady = true;
 
       const fighterIds = Array.from(activeFighterIds);
       const allReady = fighterIds.every(id => duelData[id]?.isReady);
 
-      // CRITICAL FIX: Check if all players are ready AND we are still in the "WAITING" state.
       if (allReady && duelState === 'WAITING') {
-        // Immediately change the state to prevent this block from ever running again for this duel.
         duelState = 'CINEMATIC'; 
         
-        console.log("🔥 All players are ready. Starting the duel cinematic.");
         io.emit("duel:bothReady");
 
-        const gongDelay = 27000 + Math.random() * 5000; // 27-32 seconds total
-        console.log(`⏳ GONG in ${(gongDelay / 1000).toFixed(1)}s`);
+        const gongDelay = 27000 + Math.random() * 5000;
         setTimeout(() => {
           sendGong();
         }, gongDelay);
@@ -1125,24 +981,19 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    console.log("🔥 A user disconnected:", socket.id);
     if (players[socket.id]) {
-      // ... (other disconnect logic)
       
-      // CHANGED: Correctly checks for active duel state
       if (
         (duelState === "DRAW_PHASE" || duelState === "AIM_PHASE") && 
         activeFighterIds.has(socket.id)
       ) {
-        console.log(`💀 Fighter ${players[socket.id].name} disconnected during duel`);
         players[socket.id].health = 0;
         
         const remainingFighters = Array.from(activeFighterIds).filter(id => 
-          id !== socket.id && players[id] // No health check needed, they are the only one left
+          id !== socket.id && players[id]
         );
         
         if (remainingFighters.length === 1) {
-          console.log(`🎯 Opponent wins by disconnect`);
           endDuel("WINNER", players[remainingFighters[0]]);
         }
       }
@@ -1153,13 +1004,11 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ADDED: Handler to activate AI mode for the opponent
   socket.on("duel:requestAIMode", () => {
     const requesterId = socket.id;
 
     if (duelData[requesterId]) {
       duelData[requesterId].isAI = true;
-      console.log(`🤖 AI Mode activated for player: ${players[requesterId].name}`);
       
       const requesterSocket = io.sockets.sockets.get(requesterId);
       if (requesterSocket) {
@@ -1170,5 +1019,4 @@ io.on("connection", (socket) => {
 });
 
 server.listen(PORT, "0.0.0.0", () =>
-  console.log(`🚀 Server listening on port ${PORT}`),
 );
