@@ -22,17 +22,13 @@ export const Fighter = ({ position, rotation = 0, animationState = 'idle' }: Fig
   
   const { actions, names } = useAnimations(animations, group);
   
-  // ============================================
-  // FIX 1: Safety net ALWAYS active at meaningful weight
-  // ============================================
   useEffect(() => {
     const idleAction = actions['Combat_Idle'];
     if (idleAction) {
       idleAction.reset();
       idleAction.setLoop(THREE.LoopRepeat, Infinity);
-      idleAction.setEffectiveWeight(0.15); // NEVER disable this
+      idleAction.setEffectiveWeight(0.15);
       idleAction.play();
-      console.log('🛡️ Safety net: Combat_Idle always at 0.15');
     }
     
     return () => {
@@ -40,9 +36,6 @@ export const Fighter = ({ position, rotation = 0, animationState = 'idle' }: Fig
     };
   }, [actions]);
   
-  // ============================================
-  // FIX 2: Make shooting/dodging hold final frame
-  // ============================================
   useEffect(() => {
     const animationMap: Record<typeof animationState, string> = {
       'idle': 'Combat_Idle',
@@ -58,20 +51,15 @@ export const Fighter = ({ position, rotation = 0, animationState = 'idle' }: Fig
     const action = actions[targetAnim];
     
     if (!action) {
-      console.warn(`❌ Animation "${targetAnim}" not found. Available:`, names);
       return;
     }
     
-    console.log(`🎬 Playing: ${animationState} (${targetAnim})`);
-    
-    // Stop all OTHER animations (except safety net)
     Object.entries(actions).forEach(([name, a]) => {
       if (a && name !== targetAnim && name !== 'Combat_Idle') {
         a.stop();
       }
     });
     
-    // Configure loop mode
     const loopingStates: typeof animationState[] = ['idle', 'armed', 'victory'];
     const shouldLoop = loopingStates.includes(animationState);
     
@@ -80,20 +68,14 @@ export const Fighter = ({ position, rotation = 0, animationState = 'idle' }: Fig
       Infinity
     );
     
-    // CRITICAL: Add 'shooting' and 'dodging' to clampWhenFinished
-    // This makes them hold their final frame instead of ending abruptly
     action.clampWhenFinished = ['death', 'victory', 'shooting', 'dodging'].includes(animationState);
     
-    // Rotation for combat animations
     const needsRotation = ['draw', 'armed', 'shooting', 'dodging'].includes(animationState);
     clonedScene.rotation.y = needsRotation ? -Math.PI / 2 : 0;
     
-    // Play with full weight
     action.reset();
     action.setEffectiveWeight(1);
     action.play();
-    
-    console.log(`✅ ${targetAnim} playing (clampWhenFinished: ${action.clampWhenFinished})`);
     
     return () => {
       action.stop();

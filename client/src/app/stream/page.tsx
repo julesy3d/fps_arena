@@ -1,17 +1,12 @@
 "use client";
 
 import { Canvas } from "@react-three/fiber";
-import React, { Suspense, useEffect, useState, useRef, useMemo } from "react";
+import React, { Suspense, useEffect, useState, useRef } from "react";
 import { Scene3D } from "@/components/Scene3D";
 import { useGameStore } from "@/store/useGameStore";
 import { AsciiRenderer } from "@react-three/drei";
 import { MoneyTransferBreakdown } from "@/components/MoneyTransferBreakdown";
 import { TitleOverlay } from "@/components/TitleOverlay";
-
-// ============================================
-// STREAM PAGE - OPTIMIZED FOR OBS
-// Split screen: Lobby (left 50%) + 3D Canvas (right 50%)
-// ============================================
 
 const Loader = () => (
   <div className="absolute inset-0 z-50 bg-black flex items-center justify-center text-white text-2xl font-bold">
@@ -19,10 +14,6 @@ const Loader = () => (
   </div>
 );
 
-// ============================================
-// STREAM ANIMATION CONTROLLER
-// Listens to socket events and updates fighter animations
-// ============================================
 const StreamAnimationController = () => {
   const { socket } = useGameStore();
   const cinematicAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -30,7 +21,6 @@ const StreamAnimationController = () => {
   const shootAudioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    console.log("🎵 STREAM CONTROLLER: Loading audio files...");
     cinematicAudioRef.current = new Audio('/cinematic_intro.aac');
     gongAudioRef.current = new Audio('/gong.aac');
     shootAudioRef.current = new Audio('/shoot.aac');
@@ -38,30 +28,21 @@ const StreamAnimationController = () => {
     cinematicAudioRef.current.load();
     gongAudioRef.current.load();
     shootAudioRef.current.load();
-    console.log("✅ STREAM CONTROLLER: Audio files loaded");
   }, []);
 
   useEffect(() => {
     if (!socket) {
-      console.log("⚠️ STREAM CONTROLLER: No socket available yet");
       return;
     }
 
-    console.log("🎬 STREAM CONTROLLER: Socket found, initializing event listeners...");
-
     const onBothReady = () => {
-      console.log("🎬 STREAM: Both players ready, playing cinematic");
-      
       if (cinematicAudioRef.current) {
         cinematicAudioRef.current.currentTime = 0;
-        cinematicAudioRef.current.play()
-          .then(() => console.log("✅ STREAM: Cinematic audio playing"))
-          .catch(e => console.error('❌ STREAM: Cinematic playback failed:', e));
+        cinematicAudioRef.current.play().catch(e => console.error('Cinematic playback failed:', e));
       }
     };
 
     const onGong = () => {
-      console.log("🔔 STREAM: GONG - Setting fighters to DRAW");
       if (gongAudioRef.current) {
         gongAudioRef.current.currentTime = 0;
         gongAudioRef.current.play().catch(e => console.warn('Gong failed:', e));
@@ -77,7 +58,6 @@ const StreamAnimationController = () => {
       });
 
       setTimeout(() => {
-        console.log("🔫 STREAM: Draw complete - Setting to ARMED");
         const fighters = useGameStore.getState().fighters;
         fighters.forEach(f => {
           useGameStore.getState().updateFighterAnimation(f.id, 'armed');
@@ -87,11 +67,9 @@ const StreamAnimationController = () => {
 
     const onShot = ({ shooterId, autoMiss }: { shooterId: string; autoMiss?: boolean }) => {
       if (autoMiss) {
-        console.log(`⏰ STREAM: ${shooterId} auto-missed (no animation)`);
         return;
       }
       
-      console.log(`💥 STREAM: ${shooterId} is shooting!`);
       if (shootAudioRef.current) {
         shootAudioRef.current.currentTime = 0;
         shootAudioRef.current.play().catch(e => console.warn('Shoot sound failed:', e));
@@ -99,28 +77,24 @@ const StreamAnimationController = () => {
       useGameStore.getState().updateFighterAnimation(shooterId, 'shooting');
     };
 
-    const onNewRound = ({ round }: { round: number }) => {
-      console.log(`🔄 STREAM: NEW ROUND ${round} - Re-arming fighters`);
+    const onNewRound = () => {
       const currentFighters = useGameStore.getState().fighters;
       currentFighters.forEach(f => {
         useGameStore.getState().updateFighterAnimation(f.id, 'armed');
       });
     };
 
-    const onRoundEnd = ({ outcome, winnerId, loserId, round }: { 
+    const onRoundEnd = ({ outcome, winnerId, loserId }: {
       outcome: 'hit' | 'dodge' | 'miss'; 
       winnerId?: string; 
       loserId?: string;
       round: number;
     }) => {
-      console.log(`📊 STREAM: ROUND END - outcome: ${outcome}, round: ${round}`);
-      
       setTimeout(() => {
         const currentFighters = useGameStore.getState().fighters;
         
         switch (outcome) {
           case 'hit':
-            console.log(`💥 STREAM: ${winnerId} hit ${loserId}`);
             currentFighters.forEach(f => {
               if (f.id === winnerId) {
                 useGameStore.getState().updateFighterAnimation(f.id, 'shooting');
@@ -131,7 +105,6 @@ const StreamAnimationController = () => {
             break;
             
           case 'dodge':
-            console.log(`🤺 STREAM: BOTH HIT - DODGE!`);
             setTimeout(() => {
               const currentFighters = useGameStore.getState().fighters;
               currentFighters.forEach(f => {
@@ -141,7 +114,6 @@ const StreamAnimationController = () => {
             break;
             
           case 'miss':
-            console.log(`❌ STREAM: BOTH MISSED`);
             break;
         }
       }, 300);
@@ -151,18 +123,14 @@ const StreamAnimationController = () => {
       phase: string; 
       winnerData?: { name: string; isSplit: boolean; };
     }) => {
-      console.log(`🎮 STREAM: GAME PHASE: ${phase}`);
-      
       if (phase === "POST_ROUND" && winnerData) {
         const currentFighters = useGameStore.getState().fighters;
         
         if (winnerData.isSplit) {
-          console.log("💀 STREAM: Split pot - both death animations");
           currentFighters.forEach(f => {
             useGameStore.getState().updateFighterAnimation(f.id, 'death');
           });
         } else {
-          console.log(`🏆 STREAM: ${winnerData.name} wins`);
           currentFighters.forEach(f => {
             if (f.name === winnerData.name) {
               useGameStore.getState().updateFighterAnimation(f.id, 'victory');
@@ -181,10 +149,7 @@ const StreamAnimationController = () => {
     socket.on("duel:roundEnd", onRoundEnd);
     socket.on("game:phaseChange", onGamePhaseChange);
 
-    console.log("✅ STREAM CONTROLLER: All event listeners registered");
-
     return () => {
-      console.log("🧹 STREAM CONTROLLER: Cleaning up event listeners");
       socket.off("duel:bothReady", onBothReady);
       socket.off("duel:gong", onGong);
       socket.off("duel:shot", onShot);
@@ -197,9 +162,6 @@ const StreamAnimationController = () => {
   return null;
 };
 
-// ============================================
-// STREAM MESSAGE DISPLAY - Centered in right panel
-// ============================================
 interface Message {
   text: string;
   duration: number;
@@ -387,66 +349,25 @@ const StreamMessageDisplay = () => {
   );
 };
 
-
-// ============================================
-// SPECTATOR LOBBY - FINAL CLEANED VERSION
-// ============================================
 const SpectatorLobby = () => {
-  const { players, lobbyCountdown, gamePhase, socket, isConnected } = useGameStore();
+  const { players, lobbyCountdown, gamePhase } = useGameStore();
   
-  // Debug: Log player count with full details
-  useEffect(() => {
-    const playerArray = Object.values(players);
-    console.log(`👥 STREAM LOBBY UPDATE:`, {
-      totalPlayers: playerArray.length,
-      playersObject: players,
-      playersList: playerArray.map(p => ({
-        id: p.id,
-        name: p.name,
-        betAmount: p.betAmount,
-        role: p.role
-      })),
-      socketConnected: isConnected,
-      socketId: socket?.id
-    });
-    
-    if (playerArray.length === 0) {
-      console.error('⚠️ STREAM LOBBY: Players object is EMPTY!');
-      console.log('🔍 Checking socket listeners...');
-      console.log('Socket exists:', !!socket);
-      console.log('Socket connected:', socket?.connected);
-    }
-  }, [players, socket, isConnected]);
-  
-  // [FIX] Corrected logic to show ALL players
   const allPlayers = Object.values(players);
 
-  // Sort all players by bet amount
   const sortedByBid = [...allPlayers].sort(
     (a, b) => (b.betAmount ?? 0) - (a.betAmount ?? 0) || (a.lastBetTimestamp || 0) - (b.lastBetTimestamp || 0)
   );
   
-  // Fighters are ONLY the top 2 with bets > 0
   const potentialFighters = sortedByBid.slice(0, 2);
   const fighters = potentialFighters.filter(p => p.betAmount > 0);
   const fighterIds = new Set(fighters.map(f => f.id));
 
-  // Contenders are EVERYONE else, re-sorted by bet
   const contenders = allPlayers
-    .filter(p => !fighterIds.has(p.id)) // Filter out the active fighters
-    .sort( // Re-sort the remaining players
+    .filter(p => !fighterIds.has(p.id))
+    .sort(
       (a, b) => (b.betAmount ?? 0) - (a.betAmount ?? 0) || (a.lastBetTimestamp || 0) - (b.lastBetTimestamp || 0)
     );
 
-  console.log(`🥊 STREAM LOBBY SPLIT (Corrected):`, {
-    totalPlayers: allPlayers.length,
-    fighters: fighters.length,
-    contenders: contenders.length,
-    fightersData: fighters.map(f => ({ name: f.name, bet: f.betAmount })),
-    contendersData: contenders.slice(0, 5).map(c => ({ name: c.name, bet: c.betAmount })) // Log top 5 contenders
-  });
-
-  // Player ranks by net winnings
   const sortedByNetWinnings = [...allPlayers].sort((a, b) => (b.stats?.netWinnings ?? 0) - (a.stats?.netWinnings ?? 0));
   const playerRanks = new Map<string, number>();
   sortedByNetWinnings.forEach((p, i) => {
@@ -455,8 +376,8 @@ const SpectatorLobby = () => {
     }
   });
 
-  const PlayerRow = ({ player, isFighter }: { player: any, isFighter: boolean }) => {
-    const rank = playerRanks.get(player.id);
+  const PlayerRow = ({ player, isFighter }: { player: unknown, isFighter: boolean }) => {
+    const rank = playerRanks.get((player as any).id);
     
     return (
       <div
@@ -467,35 +388,33 @@ const SpectatorLobby = () => {
           {rank ? `#${rank}` : '-'}
         </div>
         <div className="col-span-3" role="gridcell">
-          {player.name}
+          {(player as any).name}
         </div>
         <div className="col-span-1 text-center text-subtext0" role="gridcell">
-          {player.stats?.kills ?? 0}
+          {(player as any).stats?.kills ?? 0}
         </div>
         <div className="col-span-1 text-center text-subtext0" role="gridcell">
-          {player.stats?.deaths ?? 0}
+          {(player as any).stats?.deaths ?? 0}
         </div>
         <div className="col-span-1 text-center text-subtext0" role="gridcell">
-          {player.stats?.totalGamesPlayed ?? 0}
+          {(player as any).stats?.totalGamesPlayed ?? 0}
         </div>
         <div
-          className={`col-span-1 text-right ${(player.stats?.netWinnings ?? 0) > 0 ? 'text-success' : 'text-subtext1'}`}
+          className={`col-span-1 text-right ${((player as any).stats?.netWinnings ?? 0) > 0 ? 'text-success' : 'text-subtext1'}`}
           role="gridcell"
         >
-          {player.stats?.netWinnings ?? 0}
+          {(player as any).stats?.netWinnings ?? 0}
         </div>
         <div className="col-span-4 text-right text-amber font-mono" role="gridcell">
-          {player.betAmount > 0 ? player.betAmount.toLocaleString() : 'SPECTATING'}
+          {(player as any).betAmount > 0 ? (player as any).betAmount.toLocaleString() : 'SPECTATING'}
         </div>
       </div>
     );
   };
 
   return (
-    // Layout with correct padding and flex behavior
     <div className="h-screen flex flex-col bg-base pl-4 pr-[2%] pt-[10%] pb-[3%]">
       <div className="border-dashed-ascii bg-ascii-shade flex-1 overflow-y-auto flex flex-col">
-        {/* Header */}
         <header className="flex items-center justify-between p-3 flex-shrink-0">
           {lobbyCountdown !== null ? (
             <div className="font-title text-2xl text-lavender">
@@ -503,29 +422,27 @@ const SpectatorLobby = () => {
             </div>
           ) : gamePhase === "IN_ROUND" ? (
             <div className="font-title text-xl text-rose">
-              // DUEL IN PROGRESS - NEXT ROUND SOON
+              {/* DUEL IN PROGRESS - NEXT ROUND SOON */}
             </div>
           ) : gamePhase === "POST_ROUND" ? (
             <div className="font-title text-xl text-sage">
-              // ROUND COMPLETE - NEXT DUEL SOON
+              {/* ROUND COMPLETE - NEXT DUEL SOON */}
             </div>
           ) : (
             <div className="font-title text-xl text-subtext1">
-              // WAITING FOR DUELISTS
+              {/* WAITING FOR DUELISTS */}
             </div>
           )}
         </header>
         
         <div className="hr-dashed flex-shrink-0" role="presentation" />
 
-        {/* Main content area */}
         <main className="flex flex-col gap-4 p-4 flex-1">
-          {/* Fighters Table */}
           <div role="grid">
             <h3 className="mb-2 text-base font-semibold text-subtext1">
               {gamePhase === "IN_ROUND" 
-                ? "// CURRENT DUEL: FIGHTERS [TOP 2 BIDS]"
-                : "// NEXT DUEL: FIGHTERS [TOP 2 BIDS]"
+                ? "{/* CURRENT DUEL: FIGHTERS [TOP 2 BIDS] */}"
+                : "{/* NEXT DUEL: FIGHTERS [TOP 2 BIDS] */}"
               }
             </h3>
             <div className="text-xs text-subtext1" role="row">
@@ -551,10 +468,9 @@ const SpectatorLobby = () => {
             </div>
           </div>
 
-          {/* Contenders Table */}
           <div role="grid">
             <h3 className="mb-2 text-base font-semibold text-subtext1">
-              // AUCTION IN PROGRESS: CONTENDERS
+              {/* AUCTION IN PROGRESS: CONTENDERS */}
             </h3>
             <div className="text-xs text-subtext1" role="row">
               <div className="grid grid-cols-12 gap-2 p-2" role="rowheader">
@@ -584,13 +500,9 @@ const SpectatorLobby = () => {
   );
 };
 
-// ============================================
-// SPECTATOR SHOOTING BARS - Shows both players' bars
-// ============================================
-
 const SpectatorShootingBars = () => {
   const { socket, fighters, gamePhase } = useGameStore();
-  const [isDuelActive, setIsDuelActive] = useState<boolean>(false); // <-- NEW STATE
+  const [isDuelActive, setIsDuelActive] = useState<boolean>(false);
   const [barPosition, setBarPosition] = useState<number>(0);
   const [shotData, setShotData] = useState<Record<string, { position: number; hit: boolean } | null>>({});
 
@@ -598,8 +510,7 @@ const SpectatorShootingBars = () => {
     if (!socket) return;
 
     const onGong = () => {
-      console.log("🔔 GONG - Showing bars and resetting shot data");
-      setIsDuelActive(true); // <-- SHOW BARS
+      setIsDuelActive(true);
       setShotData({});
     };
 
@@ -612,7 +523,6 @@ const SpectatorShootingBars = () => {
       hit: boolean; 
       barPosition: number;
     }) => {
-      console.log(`💥 Shot: ${shooterId}, hit: ${hit}, position: ${barPosition.toFixed(3)}`);
       setShotData(prev => ({
         ...prev,
         [shooterId]: { position: barPosition, hit }
@@ -620,22 +530,20 @@ const SpectatorShootingBars = () => {
     };
 
     const onRoundEnd = () => {
-      console.log("🏁 Round end - Clearing shot data after delay, hiding bars");
       setTimeout(() => {
-        setIsDuelActive(false); // <-- HIDE BARS
+        setIsDuelActive(false);
         setShotData({});
       }, 2000);
     };
 
     const onNewRound = () => {
-      console.log("🔄 New round - Resetting shot data, showing bars");
       setShotData({});
-      setIsDuelActive(true); // <-- ENSURE BARS ARE SHOWN
+      setIsDuelActive(true);
     };
 
     const onPhaseChange = ({ phase }: { phase: string }) => {
       if (phase === "LOBBY" || phase === "POST_ROUND") {
-        setIsDuelActive(false); // <-- HIDE BARS
+        setIsDuelActive(false);
         setShotData({});
       }
     };
@@ -657,7 +565,6 @@ const SpectatorShootingBars = () => {
     };
   }, [socket]);
 
-  // [FIX] Updated render condition to check for isDuelActive
   if (gamePhase !== "IN_ROUND" || !isDuelActive || !fighters || fighters.length < 2) {
     return null;
   }
@@ -670,7 +577,7 @@ const SpectatorShootingBars = () => {
   const targetZoneStart = Math.floor(rows * 0.20);
   const targetZoneEnd = Math.floor(rows * 0.40);
 
-  const renderBar = (fighter: any, shotInfo: { position: number; hit: boolean } | null | undefined) => {
+  const renderBar = (fighter: unknown, shotInfo: { position: number; hit: boolean } | null | undefined) => {
     const displayPosition = shotInfo?.position ?? barPosition;
     const barPositionRow = Math.floor((1 - displayPosition) * rows);
     const hasShot = shotInfo !== null && shotInfo !== undefined;
@@ -678,7 +585,7 @@ const SpectatorShootingBars = () => {
     return (
       <div className="flex flex-col items-center gap-2">
         <div className="text-xs font-mono text-text font-bold mb-1">
-          {fighter.name}
+          {(fighter as any).name}
         </div>
         
         <div className="border-dashed-ascii font-mono text-xs leading-tight p-2 bg-overlay text-subtext1">
@@ -723,7 +630,6 @@ const SpectatorShootingBars = () => {
   };
 
   return (
-    // [FIX] Increased gap from gap-24 to gap-32
     <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-30 flex gap-32 items-end">
       {renderBar(fighter1, shot1)}
       {renderBar(fighter2, shot2)}
@@ -731,9 +637,6 @@ const SpectatorShootingBars = () => {
   );
 };
 
-// ============================================
-// CONNECTION STATUS
-// ============================================
 const ConnectionStatus = () => {
     const { isConnected } = useGameStore();
 
@@ -751,15 +654,11 @@ const ConnectionStatus = () => {
     );
 };
 
-// ============================================
-// MAIN STREAM PAGE
-// ============================================
 export default function StreamPage() {
   const { gamePhase, isHydrated, roundPot } = useGameStore();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    console.log("🎬 STREAM PAGE: Component mounted");
     setMounted(true);
   }, []);
 
@@ -769,18 +668,13 @@ export default function StreamPage() {
 
   return (
     <main className="font-body">
-      {/* Animation controller */}
       <StreamAnimationController />
 
-      {/* Split Screen Layout */}
       <div className="fixed inset-0 flex">
-        {/* LEFT: Spectator Lobby (50% width) */}
         <SpectatorLobby />
         </div>
 
-        {/* RIGHT: 3D Canvas (50% width) */}
         <div className="fixed right-0 top-0 bottom-0 w-1/2">
-          {/* 3D Canvas */}
           <div className="absolute inset-0 z-[-1]">
             <Suspense fallback={<Loader />}>
               <Canvas
@@ -806,21 +700,17 @@ export default function StreamPage() {
             </Suspense>
           </div>
 
-          {/* TITLE OVERLAY */}
           <TitleOverlay onHover={() => {}} />
 
-          {/* CINEMATIC MESSAGES */}
           <StreamMessageDisplay />
 
-          {/* SHOOTING BARS */}
           <SpectatorShootingBars />
 
-          {/* POT DISPLAY */}
           {gamePhase === "IN_ROUND" && roundPot > 0 && (
             <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-20">
               <div className="border-dashed-ascii bg-ascii-shade px-6 py-3">
                 <div className="font-mono text-center">
-                  <div className="text-xs text-subtext1 mb-1">// TOTAL POT</div>
+                  <div className="text-xs text-subtext1 mb-1">{/* TOTAL POT */}</div>
                   <div className="text-2xl font-bold text-amber tracking-wider">
                     {roundPot.toLocaleString()} ◎
                   </div>
@@ -829,23 +719,19 @@ export default function StreamPage() {
             </div>
           )}
 
-          {/* MONEY BREAKDOWN */}
           <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
             <MoneyTransferBreakdown />
           </div>
       </div>
 
-      {/* Connection Status */}
       <ConnectionStatus />
 
-      {/* Hydration Check */}
       {!isHydrated && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center text-white text-3xl animate-pulse z-50">
           CONNECTING TO LIVE STREAM...
         </div>
       )}
 
-      {/* Footer */}
       <footer className="fixed bottom-0 left-0 right-0 border-t border-subtext1 bg-black/90 p-2 text-center text-xs text-subtext0 z-30">
         🎮 POTSHOT.GG - Live Duel Arena | Top 2 bidders fight | Winner takes 90% | Visit POTSHOT.GG to play
       </footer>

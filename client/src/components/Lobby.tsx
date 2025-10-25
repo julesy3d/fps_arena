@@ -63,7 +63,6 @@ export const Lobby = () => {
     message: string;
   }>({ isProcessing: false, message: "" });
 
-  // Name editing state
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState("");
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -127,21 +126,18 @@ export const Lobby = () => {
           amount 
         });
       } catch (error) {
-        console.error("Signing failed:", error);
         alert("Transaction cancelled or rejected by wallet");
         setBetStatus({ isProcessing: false, message: "" });
         setIsBettingUiActive(false);
       }
     };
 
-    const handleBetVerified = ({ signature }: { signature: string }) => {
-      console.log("✅ Bet confirmed on-chain:", signature);
+    const handleBetVerified = () => {
       setBetStatus({ isProcessing: false, message: "" });
       setIsBettingUiActive(false);
     };
 
     const handleBetFailed = (errorMessage: string) => {
-      console.error("Bet failed:", errorMessage);
       alert(`Bet failed: ${errorMessage}`);
       setBetStatus({ isProcessing: false, message: "" });
       setIsBettingUiActive(false);
@@ -158,7 +154,6 @@ export const Lobby = () => {
     };
   }, [socket, signTransaction]);
 
-  // Name editing handlers
   const handleNameClick = () => {
     if (!self) return;
     setIsEditingName(true);
@@ -331,22 +326,18 @@ export const Lobby = () => {
             </div>
           ) : gamePhase === "IN_ROUND" ? (
             <div className="font-title text-xl text-rose">
-              {/* DUEL IN PROGRESS - PLACE BETS FOR NEXT ROUND */}
             </div>
           ) : gamePhase === "POST_ROUND" ? (
             <div className="font-title text-xl text-sage">
-              {/* ROUND COMPLETE - NEXT DUEL SOON */}
             </div>
           ) : (
             <div className="font-title text-xl text-subtext1">
-              {/* WAITING FOR DUELISTS */}
             </div>
           )}
         </header>
         <div className="hr-dashed" role="presentation" />
 
         <main className="flex flex-col gap-4 p-4">
-          {/* UPDATED: Phase-based fighter table header */}
           <PlayerTable 
             players={fighters} 
             title={
@@ -359,7 +350,6 @@ export const Lobby = () => {
           
           <div>
             <h3 className="mb-2 text-base font-semibold text-subtext1">
-              {/* AUCTION IN PROGRESS: CONTENDERS */}
             </h3>
             <div className="text-xs text-subtext1" role="row">
               <div className="grid grid-cols-12 gap-2 p-2" role="rowheader">
