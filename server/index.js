@@ -23,13 +23,16 @@ const server = http.createServer(app);
 // ============================================
 // OPTIMIZED SOCKET.IO FOR 2 FIGHTERS + SPECTATORS
 // ============================================
+const CLIENT_URL = process.env.CLIENT_URL;
+
 const io = new Server(server, {
   cors: {
     origin: [
       "http://localhost:3000",
       "https://txfhjhrt-3000.uks1.devtunnels.ms",
       "https://scaling-space-acorn-rrp7w7j9xwphwj47-3000.app.github.dev",
-    ],
+      CLIENT_URL, // Add the production URL here
+    ].filter(Boolean), // This safely removes CLIENT_URL if it's not set
     methods: ["GET", "POST"],
   },
   
@@ -63,7 +66,7 @@ const io = new Server(server, {
   allowUpgrades: true,
 });
 
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 let players = {};
 
 const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
@@ -1166,6 +1169,6 @@ io.on("connection", (socket) => {
   });
 });
 
-server.listen(PORT, () =>
-  console.log(`🚀 Server is running on http://localhost:${PORT}`),
+server.listen(PORT, "0.0.0.0", () =>
+  console.log(`🚀 Server listening on port ${PORT}`),
 );

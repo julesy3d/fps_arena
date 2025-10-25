@@ -1,0 +1,44 @@
+# fly.toml app configuration
+app = "potshotgg"
+primary_region = "cdg"
+kill_signal = "SIGINT"
+kill_timeout = "5s"
+
+# Tell Fly to use the Dockerfile we just created
+[build]
+  dockerfile = "server.Dockerfile"
+
+# Set the PORT environment variable to 8080.
+[env]
+  PORT = "8080"
+
+# This section defines the persistent volume for your SQLite DB
+[mounts]
+  source = "app_data"
+  destination = "/data"
+
+# This section configures the public-facing services (HTTP, HTTPS)
+# and the health checks.
+[[services]]
+  protocol = "tcp"
+  internal_port = 8080 # This MUST match the $PORT env var
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0 # Set to 1 for a "always-on" server
+
+  # Public-facing HTTP port
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true # Automatically redirect HTTP to HTTPS
+
+  # Public-facing HTTPS port
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  # TCP health check. This is reliable for Socket.IO.
+  [[services.tcp_checks]]
+    interval = "15s"
+    timeout = "2s"
+    port = 8080 # Check the internal port

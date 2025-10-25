@@ -1,0 +1,10 @@
+# Ignore host node_modules
+**/node_modules
+# Ignore client code
+client/
+# Ignore server dev files
+server/node_modules
+# Ignore git and misc
+.git
+.gitignore
+README.md
