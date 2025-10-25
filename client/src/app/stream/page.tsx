@@ -3,7 +3,7 @@
 import { Canvas } from "@react-three/fiber";
 import React, { Suspense, useEffect, useState, useRef } from "react";
 import { Scene3D } from "@/components/Scene3D";
-import { useGameStore } from "@/store/useGameStore";
+import { useGameStore, Player } from "@/store/useGameStore";
 import { AsciiRenderer } from "@react-three/drei";
 import { MoneyTransferBreakdown } from "@/components/MoneyTransferBreakdown";
 import { TitleOverlay } from "@/components/TitleOverlay";
@@ -376,8 +376,8 @@ const SpectatorLobby = () => {
     }
   });
 
-  const PlayerRow = ({ player, isFighter }: { player: unknown, isFighter: boolean }) => {
-    const rank = playerRanks.get((player as any).id);
+  const PlayerRow = ({ player, isFighter }: { player: Player, isFighter: boolean }) => {
+    const rank = playerRanks.get(player.id);
     
     return (
       <div
@@ -388,25 +388,25 @@ const SpectatorLobby = () => {
           {rank ? `#${rank}` : '-'}
         </div>
         <div className="col-span-3" role="gridcell">
-          {(player as any).name}
+          {player.name}
         </div>
         <div className="col-span-1 text-center text-subtext0" role="gridcell">
-          {(player as any).stats?.kills ?? 0}
+          {player.stats?.kills ?? 0}
         </div>
         <div className="col-span-1 text-center text-subtext0" role="gridcell">
-          {(player as any).stats?.deaths ?? 0}
+          {player.stats?.deaths ?? 0}
         </div>
         <div className="col-span-1 text-center text-subtext0" role="gridcell">
-          {(player as any).stats?.totalGamesPlayed ?? 0}
+          {player.stats?.totalGamesPlayed ?? 0}
         </div>
         <div
-          className={`col-span-1 text-right ${((player as any).stats?.netWinnings ?? 0) > 0 ? 'text-success' : 'text-subtext1'}`}
+          className={`col-span-1 text-right ${(player.stats?.netWinnings ?? 0) > 0 ? 'text-success' : 'text-subtext1'}`}
           role="gridcell"
         >
-          {(player as any).stats?.netWinnings ?? 0}
+          {player.stats?.netWinnings ?? 0}
         </div>
         <div className="col-span-4 text-right text-amber font-mono" role="gridcell">
-          {(player as any).betAmount > 0 ? (player as any).betAmount.toLocaleString() : 'SPECTATING'}
+          {player.betAmount > 0 ? player.betAmount.toLocaleString() : 'SPECTATING'}
         </div>
       </div>
     );
@@ -577,7 +577,7 @@ const SpectatorShootingBars = () => {
   const targetZoneStart = Math.floor(rows * 0.20);
   const targetZoneEnd = Math.floor(rows * 0.40);
 
-  const renderBar = (fighter: unknown, shotInfo: { position: number; hit: boolean } | null | undefined) => {
+  const renderBar = (fighter: Player, shotInfo: { position: number; hit: boolean } | null | undefined) => {
     const displayPosition = shotInfo?.position ?? barPosition;
     const barPositionRow = Math.floor((1 - displayPosition) * rows);
     const hasShot = shotInfo !== null && shotInfo !== undefined;
@@ -585,7 +585,7 @@ const SpectatorShootingBars = () => {
     return (
       <div className="flex flex-col items-center gap-2">
         <div className="text-xs font-mono text-text font-bold mb-1">
-          {(fighter as any).name}
+          {fighter.name}
         </div>
         
         <div className="border-dashed-ascii font-mono text-xs leading-tight p-2 bg-overlay text-subtext1">

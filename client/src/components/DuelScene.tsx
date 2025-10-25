@@ -344,10 +344,10 @@ export const DuelUI = () => {
     socket.emit("duel:shoot");
     hasShotThisRound.current = true;
     setCanClick(false);
-  }, [canClick, socket, actionType, barPosition, playShoot]);
+  }, [canClick, socket, actionType, playShoot]);
 
   useEffect(() => {
-    const handleWindowClick = (e: MouseEvent) => {
+    const handleWindowClick = () => {
       handleClick();
     };
     

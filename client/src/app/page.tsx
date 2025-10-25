@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { Canvas } from "@react-three/fiber";
 import React, { Suspense, useEffect, useState } from "react";
 import { Lobby } from "@/components/Lobby";
@@ -22,10 +23,13 @@ const Loader = () => (
 
 const StreamPlaceholder = ({ isBlurred }: { isBlurred: boolean }) => (
   <div className="absolute inset-0 -z-20 bg-black">
-    <img
+    <Image
       src="https://placehold.co/1920x1080/orange/white"
       alt="Stream Placeholder"
-      className={`h-full w-full object-cover transition-all duration-300 ${
+      layout="fill"
+      objectFit="cover"
+      priority
+      className={`transition-all duration-300 ${
         isBlurred ? "filter blur-md grayscale" : ""
       }`}
     />
