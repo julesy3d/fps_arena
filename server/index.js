@@ -18,6 +18,11 @@ import {
   logTransaction,
   updateTransaction,
 } from "./database.js";
+import {
+  verifyWalletSignature,
+  generateChallengeMessage,
+  isChallengeFresh,
+} from './walletVerification.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -46,6 +51,9 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 3001;
 let players = {};
+
+// Track challenge messages per socket to prevent replay attacks
+const socketChallenges = new Map(); // Map<socketId, { message: string, timestamp: number }>
 
 const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
 const TREASURY_WALLET_ADDRESS = new PublicKey(process.env.TREASURY_WALLET_ADDRESS);
@@ -777,38 +785,84 @@ io.on("connection", (socket) => {
   socket.emit("lobby:state", players);
   socket.emit("lobby:countdown", lobbyCountdown);
 
-  socket.on("player:joinWithWallet", async ({ walletAddress }) => {
-    if (!walletAddress || Object.values(players).find(p => p.walletAddress === walletAddress)) return;
-
-    try {
-      const playerData = await getPlayerStats(walletAddress);
-      if (!playerData) return;
-
-      let playerName = playerData.username || "unknown player";
-
-      players[socket.id] = {
-        id: socket.id,
-        walletAddress: walletAddress,
-        name: playerName,
-        role: "CONTENDER",
-        betAmount: 0,
-        lastBetTimestamp: null,
-        position: [0, 0, 0], 
-        rotation: 0,
-        stats: {
-          kills: playerData.kills,
-          deaths: playerData.deaths,
-          wins: playerData.wins,
-          totalGamesPlayed: playerData.total_games_played,
-          netWinnings: playerData.net_winnings
-        }
-      };
-
-      socket.emit("lobby:joined", { name: players[socket.id].name });
-      broadcastLobbyState();
-    } catch (error) {
-    }
+socket.on("player:requestChallenge", () => {
+  const message = generateChallengeMessage(socket.id);
+  socketChallenges.set(socket.id, {
+    message,
+    timestamp: Date.now()
   });
+  
+  socket.emit("player:authChallenge", { message });
+});
+
+socket.on("player:joinWithWallet", async ({ walletAddress, signature, message }) => {
+  try {
+    // 1. Verify all required fields are present
+    if (!walletAddress || !signature || !message) {
+      return socket.emit("lobby:joinFailed", "Missing authentication data");
+    }
+
+    // 2. Check if this wallet is already connected
+    if (Object.values(players).find(p => p.walletAddress === walletAddress)) {
+      return socket.emit("lobby:joinFailed", "This wallet is already connected");
+    }
+
+    // 3. Verify the challenge exists and matches
+    const challenge = socketChallenges.get(socket.id);
+    if (!challenge || challenge.message !== message) {
+      return socket.emit("lobby:joinFailed", "Invalid challenge");
+    }
+
+    // 4. Verify the challenge is fresh (not a replay attack)
+    if (!isChallengeFresh(message)) {
+      socketChallenges.delete(socket.id);
+      return socket.emit("lobby:joinFailed", "Challenge expired");
+    }
+
+    // 5. Cryptographically verify the signature
+    const isValid = verifyWalletSignature(walletAddress, signature, message);
+    if (!isValid) {
+      socketChallenges.delete(socket.id);
+      return socket.emit("lobby:joinFailed", "Invalid wallet signature");
+    }
+
+    // 6. Clean up the used challenge
+    socketChallenges.delete(socket.id);
+
+    // 7. Signature verified! Now we can trust the wallet address
+    const playerData = await getPlayerStats(walletAddress);
+    if (!playerData) {
+      return socket.emit("lobby:joinFailed", "Failed to fetch player data");
+    }
+
+    let playerName = playerData.username || "unknown player";
+
+    players[socket.id] = {
+      id: socket.id,
+      walletAddress: walletAddress,
+      name: playerName,
+      role: "CONTENDER",
+      betAmount: 0,
+      lastBetTimestamp: null,
+      position: [0, 0, 0],
+      rotation: 0,
+      stats: {
+        kills: playerData.kills,
+        deaths: playerData.deaths,
+        wins: playerData.wins,
+        totalGamesPlayed: playerData.total_games_played,
+        netWinnings: playerData.net_winnings
+      }
+    };
+
+    socket.emit("lobby:joined", { name: players[socket.id].name });
+    broadcastLobbyState();
+
+  } catch (error) {
+    console.error('Wallet authentication error:', error);
+    socket.emit("lobby:joinFailed", "Authentication failed");
+  }
+});
 
   socket.on("player:setName", (playerName) => {
     const player = players[socket.id];
@@ -981,6 +1035,9 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
+      
+    socketChallenges.delete(socket.id);
+
     if (players[socket.id]) {
       
       if (
@@ -1018,5 +1075,17 @@ io.on("connection", (socket) => {
   });
 });
 
+setInterval(() => {
+  const now = Date.now();
+  const fiveMinutes = 5 * 60 * 1000;
+  
+  for (const [socketId, challenge] of socketChallenges.entries()) {
+    if (now - challenge.timestamp > fiveMinutes) {
+      socketChallenges.delete(socketId);
+    }
+  }
+}, 5 * 60 * 1000);
+
 server.listen(PORT, "0.0.0.0", () =>
+  console.log(`🚀 Server listening on port ${PORT}`),
 );

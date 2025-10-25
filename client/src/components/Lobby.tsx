@@ -4,6 +4,7 @@ import { useGameStore, Player } from "@/store/useGameStore";
 import { useMemo, useState, useEffect, useRef } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { Transaction } from "@solana/web3.js";
+import { authenticateWallet } from "@/utils/walletAuth";
 
 
 const BetControls = ({
@@ -63,6 +64,9 @@ export const Lobby = () => {
     message: string;
   }>({ isProcessing: false, message: "" });
 
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const wallet = useWallet();
+
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState("");
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -70,10 +74,32 @@ export const Lobby = () => {
   useEffect(() => setHasMounted(true), []);
 
   useEffect(() => {
-    if (socket && connected && publicKey && !players[selfId!]) {
-      socket.emit("player:joinWithWallet", { walletAddress: publicKey.toBase58() });
-    }
-  }, [socket, connected, publicKey, players, selfId]);
+      const attemptAuth = async () => {
+        // Don't attempt if not ready
+        if (!socket || !connected || !publicKey || isAuthenticating) {
+          return;
+        }
+        
+        // Already authenticated?
+        if (selfId && players[selfId]) {
+          return;
+        }
+        
+        setIsAuthenticating(true);
+        
+        try {
+          await authenticateWallet(socket, wallet);
+          console.log('✅ Wallet authenticated successfully');
+        } catch (error) {
+          console.error('❌ Wallet authentication failed:', error);
+          alert('Failed to authenticate wallet. Please try reconnecting.');
+        } finally {
+          setIsAuthenticating(false);
+        }
+      };
+      
+      attemptAuth();
+    }, [socket, connected, publicKey, players, selfId, isAuthenticating, wallet]);
 
   const { playerRanks, self } = useMemo(() => {
     const allPlayers = Object.values(players);
@@ -310,6 +336,21 @@ export const Lobby = () => {
   };
 
   if (!hasMounted) return null;
+  
+  if (isAuthenticating) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+        <div className="border-dashed-ascii bg-ascii-shade p-8">
+          <div className="text-lg text-subtext0 mb-4">
+            Authenticating Wallet...
+          </div>
+          <div className="text-sm text-subtext1">
+            Please sign the message in your wallet
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-20 flex flex-col items-center justify-end bg-base/2 p-4 pb-16 text-text">

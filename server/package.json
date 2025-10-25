@@ -18,7 +18,8 @@
     "express": "^5.1.0",
     "socket.io": "^4.8.1",
     "supabase": "^2.48.3",
-    "three": "^0.180.0"
+    "three": "^0.180.0",
+    "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"

@@ -1,10 +1,23 @@
 import { createClient } from '@supabase/supabase-js';
 import 'dotenv/config';
 
-// Initialize the Supabase client
+// Initialize the Supabase client with SERVICE ROLE KEY
+// This bypasses RLS - server has full database access
+// ⚠️ NEVER expose this key to clients
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+
+if (!supabaseServiceKey) {
+  console.error('FATAL: SUPABASE_SERVICE_KEY not found in environment variables');
+  process.exit(1);
+}
+
+const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+});
 
 /**
  * Retrieves a player's stats from the database or creates a new entry if one doesn't exist.
