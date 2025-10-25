@@ -126,7 +126,11 @@ export const Lobby = () => {
           amount 
         });
       } catch (error) {
-        alert("Transaction cancelled or rejected by wallet");
+        if (error instanceof Error) {
+          alert(`Transaction failed: ${error.message}`);
+        } else {
+          alert("An unknown error occurred during the transaction.");
+        }
         setBetStatus({ isProcessing: false, message: "" });
         setIsBettingUiActive(false);
       }
