@@ -9,8 +9,6 @@ import express from "express";
 import http from "http";
 import { Server } from "socket.io";
 import "dotenv/config";
-import { Connection, clusterApiUrl, PublicKey, SystemProgram, Transaction, Keypair } from "@solana/web3.js";
-import bs58 from "bs58";
 import {
   getPlayerStats,
   updatePlayerStats,
@@ -25,6 +23,7 @@ import {
 } from './walletVerification.js';
 
 const app = express();
+app.use(express.json());
 const server = http.createServer(app);
 
 const CLIENT_URL = process.env.CLIENT_URL;
@@ -54,17 +53,6 @@ let players = {};
 
 // Track challenge messages per socket to prevent replay attacks
 const socketChallenges = new Map(); // Map<socketId, { message: string, timestamp: number }>
-
-const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
-const TREASURY_WALLET_ADDRESS = new PublicKey(process.env.TREASURY_WALLET_ADDRESS);
-
-let TREASURY_KEYPAIR;
-try {
-  const privateKeyBytes = bs58.decode(process.env.TREASURY_PRIVATE_KEY);
-  TREASURY_KEYPAIR = Keypair.fromSecretKey(privateKeyBytes);
-} catch (error) {
-  process.exit(1);
-}
 
 // ============================================
 // GAME STATE
@@ -120,6 +108,39 @@ const MIN_PLAYERS_TO_START = 2;
 const getContendersWithBets = () => Object.values(players).filter((p) => p.betAmount > 0);
 const getTopFighterIds = () => getContendersWithBets().sort((a, b) => b.betAmount - a.betAmount || (a.lastBetTimestamp || 0) - (b.lastBetTimestamp || 0)).slice(0, MIN_PLAYERS_TO_START).map((p) => p.id);
 const broadcastLobbyState = () => io.emit("lobby:state", players);
+
+const checkInternalAuth = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (token !== process.env.INTERNAL_API_SECRET) {
+    return res.status(401).send('Unauthorized');
+  }
+  next();
+};
+
+app.post('/internal/confirm-bet', checkInternalAuth, (req, res) => {
+  const { socketId, amount, walletAddress } = req.body;
+  const player = players[socketId];
+
+  if (player && player.walletAddress === walletAddress) {
+    player.betAmount += amount;
+    player.lastBetTimestamp = Date.now();
+    broadcastLobbyState();
+    checkAndManageCountdown();
+    res.status(200).send({ message: 'Bet confirmed' });
+  } else {
+    res.status(404).send({ message: 'Player not found or wallet address mismatch' });
+  }
+});
+
+app.post('/internal/log-transaction', checkInternalAuth, async (req, res) => {
+  try {
+    const { transactionData } = req.body;
+    await logTransaction(transactionData);
+    res.status(200).send({ message: 'Transaction logged' });
+  } catch (error) {
+    res.status(500).send({ message: 'Failed to log transaction' });
+  }
+});
 const broadcastLobbyCountdown = () => io.emit("lobby:countdown", lobbyCountdown);
 
 const stopLobbyCountdown = () => {
@@ -582,142 +603,79 @@ const endRound = async (winner, isSplitPot = false) => {
     const protocolFee = Math.floor(roundPot * 0.1);
     
     if (isSplitPot) {
-      const splitAmount = Math.floor((roundPot * 0.9) / 2);
-      
-      try {
-        await logTransaction({
-          round_id: roundId,
-          transaction_type: 'protocol_fee',
-          recipient_wallet: TREASURY_KEYPAIR.publicKey.toBase58(),
-          amount: protocolFee,
-          status: 'confirmed',
-          signature: 'N/A',
-          confirmed_at: new Date()
-        });
-      } catch (error) {
-      }
-      
-      const fighterIds = Array.from(activeFighterIds);
-      for (const fighterId of fighterIds) {
-        const fighter = players[fighterId];
-        if (!fighter || splitAmount <= 0) continue;
+        const splitAmount = Math.floor((roundPot * 0.9) / 2);
         
-        let payoutTxId = null;
         try {
-          payoutTxId = await logTransaction({
-            round_id: roundId,
-            transaction_type: 'payout_split',
-            recipient_wallet: fighter.walletAddress,
-            amount: splitAmount,
-            status: 'pending'
-          });
-
-          const payoutTx = new Transaction().add(
-            SystemProgram.transfer({
-              fromPubkey: TREASURY_KEYPAIR.publicKey,
-              toPubkey: new PublicKey(fighter.walletAddress),
-              lamports: splitAmount,
-            })
-          );
-          
-          const { blockhash: payoutBlockhash } = await connection.getLatestBlockhash();
-          payoutTx.recentBlockhash = payoutBlockhash;
-          payoutTx.feePayer = TREASURY_KEYPAIR.publicKey;
-          payoutTx.sign(TREASURY_KEYPAIR);
-          
-          const payoutSignature = await connection.sendRawTransaction(payoutTx.serialize());
-          await connection.confirmTransaction(payoutSignature, 'confirmed');
-          
-          if (payoutTxId) {
-            await updateTransaction(payoutTxId, {
-              status: 'confirmed',
-              signature: payoutSignature,
-              confirmed_at: new Date()
+            logTransaction({
+                round_id: roundId,
+                transaction_type: 'protocol_fee',
+                recipient_wallet: 'TREASURY',
+                amount: protocolFee,
+                status: 'confirmed',
+                signature: 'N/A',
+                confirmed_at: new Date()
             });
-          }
-          
-          const netGain = splitAmount - fighter.betAmount;
-          incrementPlayerStat(fighter.walletAddress, "net_winnings", netGain);
-          
         } catch (error) {
-          if (payoutTxId) {
-            await updateTransaction(payoutTxId, {
-              status: 'failed',
-              error_message: error.message
-            });
-          }
         }
-      }
-      
-      io.emit("game:phaseChange", {
-        phase: "POST_ROUND",
-        winnerData: { 
-          name: "DRAW - POT SPLIT", 
-          pot: splitAmount * 2,
-          isSplit: true 
-        },
-      });
-      
-    } else {
-      const winnerPayout = Math.floor(roundPot * 0.9);
 
-      try {
-        await logTransaction({
-          round_id: roundId,
-          transaction_type: 'protocol_fee',
-          recipient_wallet: TREASURY_KEYPAIR.publicKey.toBase58(),
-          amount: protocolFee,
-          status: 'confirmed',
-          signature: 'N/A',
-          confirmed_at: new Date()
+        const fighterIds = Array.from(activeFighterIds);
+        for (const fighterId of fighterIds) {
+            const fighter = players[fighterId];
+            if (!fighter || splitAmount <= 0) continue;
+
+            fetch(`${process.env.VERCEL_API_URL}/api/payout`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${process.env.INTERNAL_API_SECRET}`
+                },
+                body: JSON.stringify({
+                    winnerAddress: fighter.walletAddress,
+                    amount: splitAmount
+                })
+            }).catch(error => console.error('Payout fetch error:', error));
+
+            const netGain = splitAmount - fighter.betAmount;
+            incrementPlayerStat(fighter.walletAddress, "net_winnings", netGain);
+        }
+
+        io.emit("game:phaseChange", {
+            phase: "POST_ROUND",
+            winnerData: {
+                name: "DRAW - POT SPLIT",
+                pot: splitAmount * 2,
+                isSplit: true
+            },
         });
-      } catch (error) {
-      }
+    } else {
+        const winnerPayout = Math.floor(roundPot * 0.9);
 
-      if (winner && winnerPayout > 0) {
-        let payoutTxId = null;
         try {
-          payoutTxId = await logTransaction({
-            round_id: roundId,
-            transaction_type: 'payout',
-            recipient_wallet: winner.walletAddress,
-            amount: winnerPayout,
-            status: 'pending'
-          });
-
-          const payoutTx = new Transaction().add(
-            SystemProgram.transfer({
-              fromPubkey: TREASURY_KEYPAIR.publicKey,
-              toPubkey: new PublicKey(winner.walletAddress),
-              lamports: winnerPayout,
-            })
-          );
-          
-          const { blockhash: payoutBlockhash } = await connection.getLatestBlockhash();
-          payoutTx.recentBlockhash = payoutBlockhash;
-          payoutTx.feePayer = TREASURY_KEYPAIR.publicKey;
-          payoutTx.sign(TREASURY_KEYPAIR);
-          
-          const payoutSignature = await connection.sendRawTransaction(payoutTx.serialize());
-          await connection.confirmTransaction(payoutSignature, 'confirmed');
-          
-          if (payoutTxId) {
-            await updateTransaction(payoutTxId, {
-              status: 'confirmed',
-              signature: payoutSignature,
-              confirmed_at: new Date()
+            logTransaction({
+                round_id: roundId,
+                transaction_type: 'protocol_fee',
+                recipient_wallet: 'TREASURY',
+                amount: protocolFee,
+                status: 'confirmed',
+                signature: 'N/A',
+                confirmed_at: new Date()
             });
-          }
-          
         } catch (error) {
-          if (payoutTxId) {
-            await updateTransaction(payoutTxId, {
-              status: 'failed',
-              error_message: error.message
-            });
-          }
         }
-      }
+
+        if (winner && winnerPayout > 0) {
+            fetch(`${process.env.VERCEL_API_URL}/api/payout`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${process.env.INTERNAL_API_SECRET}`
+                },
+                body: JSON.stringify({
+                    winnerAddress: winner.walletAddress,
+                    amount: winnerPayout
+                })
+            }).catch(error => console.error('Payout fetch error:', error));
+        }
 
       if (winner) {
         try {
@@ -774,11 +732,6 @@ const endRound = async (winner, isSplitPot = false) => {
       checkAndManageCountdown();
     }, 10000);
 };
-
-const betRequestTimestamps = new Map();
-const BET_REQUEST_COOLDOWN = 3000;
-const MIN_BET = 1000;
-const MAX_BET = 1000000000;
 
 io.on("connection", (socket) => {
   socket.emit("game:phaseChange", { phase: gamePhase });
@@ -873,139 +826,6 @@ socket.on("player:joinWithWallet", async ({ walletAddress, signature, message })
         broadcastLobbyState();
       } catch (error) {
       }
-    }
-  });
-
-  socket.on("player:requestBet", async ({ amount }) => {
-    const player = players[socket.id];
-    if (!player) {
-      return socket.emit("lobby:betFailed", "Player not found.");
-    }
-
-    const lastRequest = betRequestTimestamps.get(socket.id) || 0;
-    if (Date.now() - lastRequest < BET_REQUEST_COOLDOWN) {
-      return socket.emit("lobby:betFailed", "Please wait before placing another bet.");
-    }
-    betRequestTimestamps.set(socket.id, Date.now());
-
-    if (amount < MIN_BET || amount > MAX_BET) {
-      return socket.emit("lobby:betFailed", `Bet must be between ${MIN_BET} and ${MAX_BET} lamports.`);
-    }
-
-    try {
-      const playerBalance = await connection.getBalance(new PublicKey(player.walletAddress));
-      
-      if (playerBalance < amount + 5000) {
-        return socket.emit("lobby:betFailed", "Insufficient SOL balance for bet + fees");
-      }
-
-      const tx = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: new PublicKey(player.walletAddress),
-          toPubkey: TREASURY_WALLET_ADDRESS,
-          lamports: amount,
-        })
-      );
-
-      const { blockhash } = await connection.getLatestBlockhash();
-      
-      tx.recentBlockhash = blockhash;
-      tx.feePayer = new PublicKey(player.walletAddress);
-
-      const serializedTx = tx.serialize({ 
-        requireAllSignatures: false 
-      }).toString('base64');
-      
-      socket.emit("lobby:signatureRequest", { serializedTx, amount });
-    } catch (error) {
-      socket.emit("lobby:betFailed", "Failed to create transaction.");
-    }
-  });
-
-  socket.on("player:submitSignedBet", async ({ serializedTx, amount }) => {
-    const player = players[socket.id];
-    if (!player) {
-      return socket.emit("lobby:betFailed", "Player not found.");
-    }
-
-    const previousTopFighterIds = getTopFighterIds();
-
-    try {
-      const tx = Transaction.from(Buffer.from(serializedTx, 'base64'));
-      
-      const systemInstructions = tx.instructions.filter(instr => 
-        SystemProgram.programId.equals(instr.programId)
-      );
-      
-      if (systemInstructions.length === 0) {
-        throw new Error("No SystemProgram transfer instruction found");
-      }
-      
-      if (systemInstructions.length > 1) {
-        throw new Error("Transaction contains multiple SystemProgram instructions");
-      }
-      
-      const transferInstruction = systemInstructions[0];
-      const instructionData = transferInstruction.data;
-      
-      if (instructionData.length !== 12) {
-        throw new Error("Invalid instruction data length");
-      }
-      
-      const instructionType = instructionData.readUInt32LE(0);
-      if (instructionType !== 2) {
-        throw new Error("Not a transfer instruction");
-      }
-      
-      const lamports = Number(instructionData.readBigUInt64LE(4));
-      const fromPubkey = transferInstruction.keys[0].pubkey;
-      const toPubkey = transferInstruction.keys[1].pubkey;
-      
-      if (lamports !== amount) {
-        throw new Error(`Amount mismatch: expected ${amount}, got ${lamports}`);
-      }
-      
-      if (!fromPubkey.equals(new PublicKey(player.walletAddress))) {
-        throw new Error("Wrong sender wallet");
-      }
-      
-      if (!toPubkey.equals(TREASURY_WALLET_ADDRESS)) {
-        throw new Error("Wrong recipient wallet");
-      }
-
-      const signature = await connection.sendRawTransaction(tx.serialize(), {
-        skipPreflight: true,
-        preflightCommitment: 'confirmed'
-      });
-      
-      await connection.confirmTransaction(signature, 'confirmed');
-      
-
-      player.betAmount += amount;
-      player.lastBetTimestamp = Date.now();
-      
-      socket.emit("lobby:betVerified", { signature });
-      broadcastLobbyState();
-      checkAndManageCountdown(previousTopFighterIds);
-
-    } catch (error) {
-      
-      let errorMessage = "Transaction failed";
-      if (error.message.includes("insufficient")) {
-        errorMessage = "Insufficient SOL balance";
-      } else if (error.message.includes("blockhash")) {
-        errorMessage = "Transaction expired, please try again";
-      } else if (error.message.includes("Amount mismatch")) {
-        errorMessage = "Amount validation failed";
-      } else if (error.message.includes("Wrong sender") || error.message.includes("Wrong recipient")) {
-        errorMessage = "Invalid transaction addresses";
-      } else if (error.message.includes("multiple SystemProgram")) {
-        errorMessage = "Invalid transaction structure";
-      } else {
-        errorMessage = error.message;
-      }
-      
-      socket.emit("lobby:betFailed", errorMessage);
     }
   });
   
