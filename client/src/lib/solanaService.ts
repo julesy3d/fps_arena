@@ -17,8 +17,10 @@ import {
 Connection,
 PublicKey,
 Transaction,
-TransactionInstruction
+TransactionInstruction,
+Keypair
 } from '@solana/web3.js';
+import bs58 from 'bs58';
 import {
 TOKEN_PROGRAM_ID,
 getAssociatedTokenAddress,
@@ -27,25 +29,44 @@ createTransferInstruction,
 } from '@solana/spl-token';
 
 // ============================================
-// CONFIGURATION
+// CONFIGURATION (LAZY INITIALIZATION)
 // ============================================
 
-const RPC_URL = process.env.SOLANA_RPC_URL || process.env.NEXT_PUBLIC_SOLANA_RPC_URL;
-if (!RPC_URL) throw new Error('SOLANA_RPC_URL not configured');
+let connection: Connection | null = null;
+const getConnection = () => {
+  if (!connection) {
+    const rpcUrl = process.env.SOLANA_RPC_URL || process.env.NEXT_PUBLIC_SOLANA_RPC_URL;
+    if (!rpcUrl) throw new Error('SOLANA_RPC_URL not configured');
+    connection = new Connection(rpcUrl, 'confirmed');
+  }
+  return connection;
+};
 
-const SHOT_MINT_ADDRESS = new PublicKey(
-process.env.SHOT_MINT_ADDRESS || process.env.NEXT_PUBLIC_SHOT_MINT_ADDRESS!
-);
+let shotMintAddress: PublicKey | null = null;
+const getShotMintAddress = () => {
+  if (!shotMintAddress) {
+    const mintAddress = process.env.SHOT_MINT_ADDRESS || process.env.NEXT_PUBLIC_SHOT_MINT_ADDRESS;
+    if (!mintAddress) throw new Error('SHOT_MINT_ADDRESS not configured');
+    shotMintAddress = new PublicKey(mintAddress);
+  }
+  return shotMintAddress;
+};
 
-const TREASURY_ADDRESS = new PublicKey(
-process.env.TREASURY_WALLET_ADDRESS || process.env.NEXT_PUBLIC_TREASURY_WALLET_ADDRESS!
-);
+let treasuryAddress: PublicKey | null = null;
+const getTreasuryAddress = () => {
+  if (!treasuryAddress) {
+    const address = process.env.TREASURY_WALLET_ADDRESS || process.env.NEXT_PUBLIC_TREASURY_WALLET_ADDRESS;
+    if (!address) throw new Error('TREASURY_WALLET_ADDRESS not configured');
+    treasuryAddress = new PublicKey(address);
+  }
+  return treasuryAddress;
+};
 
-const SHOT_TOKEN_DECIMALS = parseInt(
-process.env.SHOT_TOKEN_DECIMALS || process.env.NEXT_PUBLIC_SHOT_TOKEN_DECIMALS || '6'
-);
-
-export const connection = new Connection(RPC_URL, 'confirmed');
+const getShotTokenDecimals = () => {
+  return parseInt(
+    process.env.SHOT_TOKEN_DECIMALS || process.env.NEXT_PUBLIC_SHOT_TOKEN_DECIMALS || '6'
+  );
+};
 
 // ============================================
 // CONVERSION FUNCTIONS (INTERNAL USE ONLY)
@@ -74,7 +95,7 @@ throw new Error(`Amount must be non-negative, got: ${amountInTokens}`);
 }
 
 // Calculate: tokens × (10^decimals)
-const multiplier = BigInt(10 ** SHOT_TOKEN_DECIMALS);
+const multiplier = BigInt(10 ** getShotTokenDecimals());
 const baseUnits = BigInt(amountInTokens) * multiplier;
 
 console.log(`[CONVERSION] ${amountInTokens} tokens → ${baseUnits} base units`);
@@ -99,7 +120,7 @@ function baseUnitsToTokens(baseUnits: bigint | string): number {
 const units = typeof baseUnits === 'string' ? BigInt(baseUnits) : baseUnits;
 
 // Calculate: base_units ÷ (10^decimals)
-const divisor = BigInt(10 ** SHOT_TOKEN_DECIMALS);
+const divisor = BigInt(10 ** getShotTokenDecimals());
 const tokens = Number(units / divisor);
 
 console.log(`[CONVERSION] ${units} base units → ${tokens} tokens`);
@@ -123,7 +144,7 @@ false,
 TOKEN_PROGRAM_ID
 );
 
-const accountInfo = await connection.getAccountInfo(ata);
+const accountInfo = await getConnection().getAccountInfo(ata);
 
 if (accountInfo) {
 return null;
@@ -164,21 +185,21 @@ const baseUnits = tokensToBaseUnits(amountInTokens);
 
 // Calculate token account addresses
 const senderAta = await getAssociatedTokenAddress(
-SHOT_MINT_ADDRESS,
+getShotMintAddress(),
 senderPubkey,
 false,
 TOKEN_PROGRAM_ID
 );
 
 const treasuryAta = await getAssociatedTokenAddress(
-SHOT_MINT_ADDRESS,
-TREASURY_ADDRESS,
+getShotMintAddress(),
+getTreasuryAddress(),
 false,
 TOKEN_PROGRAM_ID
 );
 
 // Verify sender has token account
-const senderAtaInfo = await connection.getAccountInfo(senderAta);
+const senderAtaInfo = await getConnection().getAccountInfo(senderAta);
 if (!senderAtaInfo) {
 throw new Error(
 'You do not have a $SHOT token account. Please obtain $SHOT tokens first.'
@@ -239,15 +260,15 @@ console.log(`[VERIFY] Verifying transaction for ${expectedAmountInTokens} tokens
 const expectedBaseUnits = tokensToBaseUnits(expectedAmountInTokens);
 
 // Calculate treasury token account
-const treasuryAta = await getAssociatedTokenAddress(
-SHOT_MINT_ADDRESS,
-TREASURY_ADDRESS,
+await getAssociatedTokenAddress(
+getShotMintAddress(),
+getTreasuryAddress(),
 false,
 TOKEN_PROGRAM_ID
 );
 
 // Fetch transaction from blockchain
-const tx = await connection.getTransaction(txSignature, {
+const tx = await getConnection().getTransaction(txSignature, {
 maxSupportedTransactionVersion: 0,
 });
 
@@ -279,8 +300,8 @@ return { valid: false, message: 'No token balance data in transaction' };
 }
 
 // Find treasury's balance change
-const treasuryAddress = TREASURY_ADDRESS.toBase58();
-const mintAddress = SHOT_MINT_ADDRESS.toBase58();
+const treasuryAddress = getTreasuryAddress().toBase58();
+const mintAddress = getShotMintAddress().toBase58();
 
 const preBalance = preTokenBalances.find(
 (b) => b.owner === treasuryAddress && b.mint === mintAddress
@@ -362,8 +383,6 @@ if (!privateKeyString) {
 throw new Error('TREASURY_PRIVATE_KEY not configured');
 }
 
-const { Keypair } = await import('@solana/web3.js');
-const bs58 = (await import('bs58')).default;
 const privateKeyBytes = bs58.decode(privateKeyString);
 const treasuryKeypair = Keypair.fromSecretKey(privateKeyBytes);
 
@@ -371,14 +390,14 @@ const treasuryKeypair = Keypair.fromSecretKey(privateKeyBytes);
 const winnerPubkey = new PublicKey(winnerWalletAddress);
 
 const treasuryAta = await getAssociatedTokenAddress(
-SHOT_MINT_ADDRESS,
+getShotMintAddress(),
 treasuryKeypair.publicKey,
 false,
 TOKEN_PROGRAM_ID
 );
 
 const winnerAta = await getAssociatedTokenAddress(
-SHOT_MINT_ADDRESS,
+getShotMintAddress(),
 winnerPubkey,
 false,
 TOKEN_PROGRAM_ID
@@ -391,7 +410,7 @@ const transaction = new Transaction();
 const createAtaIx = await getOrCreateAtaInstruction(
 treasuryKeypair.publicKey,
 winnerPubkey,
-SHOT_MINT_ADDRESS
+getShotMintAddress()
 );
 
 if (createAtaIx) {
@@ -414,14 +433,14 @@ TOKEN_PROGRAM_ID
 console.log(`[PAYOUT] Transaction created with ${baseUnits} base units`);
 
 // Set blockhash and fee payer
-const { blockhash } = await connection.getLatestBlockhash('confirmed');
+const { blockhash } = await getConnection().getLatestBlockhash('confirmed');
 transaction.recentBlockhash = blockhash;
 transaction.feePayer = treasuryKeypair.publicKey;
 
 // Sign and send
 transaction.sign(treasuryKeypair);
 
-const signature = await connection.sendRawTransaction(
+const signature = await getConnection().sendRawTransaction(
 transaction.serialize(),
 {
 skipPreflight: false,
@@ -429,7 +448,7 @@ preflightCommitment: 'confirmed',
 }
 );
 
-await connection.confirmTransaction(signature, 'confirmed');
+await getConnection().confirmTransaction(signature, 'confirmed');
 
 console.log(`[PAYOUT] ✓ Sent ${amountInTokens} tokens (signature: ${signature})`);
 

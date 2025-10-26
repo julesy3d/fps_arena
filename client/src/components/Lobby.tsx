@@ -3,7 +3,6 @@
 import { useGameStore, Player } from "@/store/useGameStore";
 import { useMemo, useState, useEffect, useRef } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { Transaction } from "@solana/web3.js";
 import { authenticateWallet } from "@/utils/walletAuth";
 
 
@@ -57,7 +56,7 @@ disabled={isProcessing}
 export const Lobby = () => {
   const { socket, players, lobbyCountdown, gamePhase } = useGameStore();
   const { connected, publicKey, signTransaction } = useWallet();
-  useConnection();
+const { connection } = useConnection();
   const selfId = socket?.id || null;
 
   const [hasMounted, setHasMounted] = useState(false);
@@ -154,7 +153,7 @@ setBetStatus({ isProcessing: true, message: "CREATING TRANSACTION..." });
 
 try {
 // Import blockchain service
-const { createShotTransferTransaction, connection } = await import('@/lib/solanaService');
+const { createShotTransferTransaction } = await import('@/lib/solanaService');
 
 // Create unsigned transaction (amount is in tokens)
 const transaction = await createShotTransferTransaction(
