@@ -13,6 +13,7 @@ import { DuelUI } from "@/components/DuelScene";
 import { AsciiRenderer } from "@react-three/drei";
 import { UnifiedMessageDisplay } from "@/components/UnifiedMessageDisplay";
 import { MoneyTransferBreakdown } from "@/components/MoneyTransferBreakdown";
+import { formatTokenAmount } from "@/utils/FormatTokenAmount";
 
 const Loader = () => (
   <div className="absolute inset-0 z-50 bg-black flex items-center justify-center text-white text-2xl font-bold">
@@ -128,7 +129,7 @@ export default function Home() {
             <div className="font-mono text-center">
               <div className="text-xs text-subtext1 mb-1"></div>
               <div className="text-2xl font-bold text-amber tracking-wider">
-                {roundPot.toLocaleString()} ◎
+                {formatTokenAmount(roundPot, true)}
               </div>
             </div>
           </div>

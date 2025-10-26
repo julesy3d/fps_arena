@@ -24,15 +24,18 @@ const BetControls = ({
 
   return (
     <div className="flex items-center justify-end gap-2">
-      <input
-        type="number"
-        min="1000"
-        step="1000"
-        value={amount}
-        onChange={(e) => setAmount(parseInt(e.target.value, 10) || 1000)}
-        className="w-20 text-center text-xs focus:outline-none blinking-cursor px-1 bg-overlay text-text"
-        disabled={isProcessing}
-      />
+<input
+type="number"
+step="1000" // Increment by 1000 tokens
+min="1000" // Minimum 1000 tokens
+value={amount}
+onChange={(e) => {
+const value = parseInt(e.target.value, 10);
+setAmount(isNaN(value) ? 1000 : value);
+}}
+className="w-20 text-center text-xs focus:outline-none blinking-cursor px-1 bg-overlay text-text"
+disabled={isProcessing}
+/>
       <button
         onClick={handleBet}
         disabled={isProcessing}
@@ -139,61 +142,80 @@ export const Lobby = () => {
     return others.slice(0, 100);
   }, [sortedByBid, fighters, self]);
 
-  const handleBet = async (amount: number) => {
-    if (!publicKey || !socket || !signTransaction) return;
-    
-    setBetStatus({ isProcessing: true, message: "..." });
-    socket.emit("player:requestBet", { amount });
-  };
+const handleBet = async (amount: number) => {
+if (!publicKey || !socket || !signTransaction) {
+console.error('[LOBBY] Wallet not connected');
+return;
+}
 
-  useEffect(() => {
-    if (!socket || !signTransaction) return;
+console.log(`[LOBBY] Starting bet for ${amount} tokens`);
 
-    const handleSignatureRequest = async ({ serializedTx, amount }: { serializedTx: string; amount: number }) => {
-      setBetStatus({ isProcessing: true, message: "SIGN IN WALLET" });
-      
-      try {
-        const tx = Transaction.from(Buffer.from(serializedTx, 'base64'));
-        const signedTx = await signTransaction(tx);
-        const serialized = signedTx.serialize().toString('base64');
-        
-        setBetStatus({ isProcessing: true, message: "CONFIRMING..." });
-        socket.emit("player:submitSignedBet", { 
-          serializedTx: serialized, 
-          amount 
-        });
-      } catch (error) {
-        if (error instanceof Error) {
-          alert(`Transaction failed: ${error.message}`);
-        } else {
-          alert("An unknown error occurred during the transaction.");
-        }
-        setBetStatus({ isProcessing: false, message: "" });
-        setIsBettingUiActive(false);
-      }
-    };
+setBetStatus({ isProcessing: true, message: "CREATING TRANSACTION..." });
 
-    const handleBetVerified = () => {
-      setBetStatus({ isProcessing: false, message: "" });
-      setIsBettingUiActive(false);
-    };
+try {
+// Import blockchain service
+const { createShotTransferTransaction, connection } = await import('@/lib/solanaService');
 
-    const handleBetFailed = (errorMessage: string) => {
-      alert(`Bet failed: ${errorMessage}`);
-      setBetStatus({ isProcessing: false, message: "" });
-      setIsBettingUiActive(false);
-    };
+// Create unsigned transaction (amount is in tokens)
+const transaction = await createShotTransferTransaction(
+publicKey,
+amount // ← Whole tokens (e.g., 1000)
+);
 
-    socket.on("lobby:signatureRequest", handleSignatureRequest);
-    socket.on("lobby:betVerified", handleBetVerified);
-    socket.on("lobby:betFailed", handleBetFailed);
+// Get recent blockhash
+const { blockhash } = await connection.getLatestBlockhash('confirmed');
+transaction.recentBlockhash = blockhash;
+transaction.feePayer = publicKey;
 
-    return () => {
-      socket.off("lobby:signatureRequest", handleSignatureRequest);
-      socket.off("lobby:betVerified", handleBetVerified);
-      socket.off("lobby:betFailed", handleBetFailed);
-    };
-  }, [socket, signTransaction]);
+// Request signature from wallet
+setBetStatus({ isProcessing: true, message: "SIGN IN WALLET" });
+const signedTransaction = await signTransaction(transaction);
+
+// Send transaction
+setBetStatus({ isProcessing: true, message: "SENDING..." });
+const signature = await connection.sendRawTransaction(
+signedTransaction.serialize(),
+{
+skipPreflight: false,
+preflightCommitment: 'confirmed',
+}
+);
+
+// Wait for confirmation
+setBetStatus({ isProcessing: true, message: "CONFIRMING..." });
+await connection.confirmTransaction(signature, 'confirmed');
+
+console.log('[LOBBY] ✓ Transaction confirmed:', signature);
+
+// Notify backend (amount in tokens)
+const response = await fetch('/api/bet', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({
+txSignature: signature,
+amount, // ← Whole tokens (e.g., 1000)
+socketId: socket.id,
+walletAddress: publicKey.toBase58()
+})
+});
+
+if (!response.ok) {
+const error = await response.json();
+throw new Error(error.error || 'Bet verification failed');
+}
+
+console.log('[LOBBY] ✓ Bet verified by backend');
+
+setBetStatus({ isProcessing: false, message: "" });
+setIsBettingUiActive(false);
+
+} catch (error) {
+console.error('[LOBBY] Bet error:', error);
+alert(`Transaction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+setBetStatus({ isProcessing: false, message: "" });
+setIsBettingUiActive(false);
+}
+};
 
   const handleNameClick = () => {
     if (!self) return;

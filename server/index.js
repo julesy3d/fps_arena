@@ -9,8 +9,6 @@ import express from "express";
 import http from "http";
 import { Server } from "socket.io";
 import "dotenv/config";
-import { Connection, clusterApiUrl, PublicKey, SystemProgram, Transaction, Keypair } from "@solana/web3.js";
-import bs58 from "bs58";
 import {
   getPlayerStats,
   updatePlayerStats,
@@ -26,6 +24,42 @@ import {
 
 const app = express();
 const server = http.createServer(app);
+app.use(express.json());
+
+app.post('/internal/confirm-bet', (req, res) => {
+  const authHeader = req.headers.authorization;
+  const internalSecret = process.env.INTERNAL_API_SECRET;
+
+  if (!authHeader || authHeader !== `Bearer ${internalSecret}`) {
+    return res.status(401).send('Unauthorized');
+  }
+
+  const { socketId, walletAddress, amount, txSignature } = req.body;
+  const player = players[socketId];
+
+  if (!player) {
+    return res.status(404).send('Player not found');
+  }
+
+  if (player.walletAddress !== walletAddress) {
+    return res.status(403).send('Wallet address mismatch');
+  }
+
+  const previousTopFighterIds = getTopFighterIds();
+
+  player.betAmount += amount;
+  player.lastBetTimestamp = Date.now();
+
+  const socket = io.sockets.sockets.get(socketId);
+  if (socket) {
+    socket.emit("lobby:betVerified", { signature: txSignature });
+  }
+
+  broadcastLobbyState();
+  checkAndManageCountdown(previousTopFighterIds);
+
+  res.status(200).send({ success: true });
+});
 
 const CLIENT_URL = process.env.CLIENT_URL;
 
@@ -54,17 +88,6 @@ let players = {};
 
 // Track challenge messages per socket to prevent replay attacks
 const socketChallenges = new Map(); // Map<socketId, { message: string, timestamp: number }>
-
-const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
-const TREASURY_WALLET_ADDRESS = new PublicKey(process.env.TREASURY_WALLET_ADDRESS);
-
-let TREASURY_KEYPAIR;
-try {
-  const privateKeyBytes = bs58.decode(process.env.TREASURY_PRIVATE_KEY);
-  TREASURY_KEYPAIR = Keypair.fromSecretKey(privateKeyBytes);
-} catch (error) {
-  process.exit(1);
-}
 
 // ============================================
 // GAME STATE
@@ -612,21 +635,20 @@ const endRound = async (winner, isSplitPot = false) => {
             status: 'pending'
           });
 
-          const payoutTx = new Transaction().add(
-            SystemProgram.transfer({
-              fromPubkey: TREASURY_KEYPAIR.publicKey,
-              toPubkey: new PublicKey(fighter.walletAddress),
-              lamports: splitAmount,
+          const VERCEL_API_URL = process.env.VERCEL_API_URL;
+          const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET;
+
+          const response = await fetch(`${VERCEL_API_URL}/api/payout`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${INTERNAL_API_SECRET}`
+            },
+            body: JSON.stringify({
+              walletAddress: fighter.walletAddress,
+              amount: splitAmount
             })
-          );
-          
-          const { blockhash: payoutBlockhash } = await connection.getLatestBlockhash();
-          payoutTx.recentBlockhash = payoutBlockhash;
-          payoutTx.feePayer = TREASURY_KEYPAIR.publicKey;
-          payoutTx.sign(TREASURY_KEYPAIR);
-          
-          const payoutSignature = await connection.sendRawTransaction(payoutTx.serialize());
-          await connection.confirmTransaction(payoutSignature, 'confirmed');
+          });
           
           if (payoutTxId) {
             await updateTransaction(payoutTxId, {
@@ -685,21 +707,20 @@ const endRound = async (winner, isSplitPot = false) => {
             status: 'pending'
           });
 
-          const payoutTx = new Transaction().add(
-            SystemProgram.transfer({
-              fromPubkey: TREASURY_KEYPAIR.publicKey,
-              toPubkey: new PublicKey(winner.walletAddress),
-              lamports: winnerPayout,
+          const VERCEL_API_URL = process.env.VERCEL_API_URL;
+          const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET;
+
+          const response = await fetch(`${VERCEL_API_URL}/api/payout`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${INTERNAL_API_SECRET}`
+            },
+            body: JSON.stringify({
+              walletAddress: winner.walletAddress,
+              amount: winnerPayout
             })
-          );
-          
-          const { blockhash: payoutBlockhash } = await connection.getLatestBlockhash();
-          payoutTx.recentBlockhash = payoutBlockhash;
-          payoutTx.feePayer = TREASURY_KEYPAIR.publicKey;
-          payoutTx.sign(TREASURY_KEYPAIR);
-          
-          const payoutSignature = await connection.sendRawTransaction(payoutTx.serialize());
-          await connection.confirmTransaction(payoutSignature, 'confirmed');
+          });
           
           if (payoutTxId) {
             await updateTransaction(payoutTxId, {
@@ -876,138 +897,7 @@ socket.on("player:joinWithWallet", async ({ walletAddress, signature, message })
     }
   });
 
-  socket.on("player:requestBet", async ({ amount }) => {
-    const player = players[socket.id];
-    if (!player) {
-      return socket.emit("lobby:betFailed", "Player not found.");
-    }
 
-    const lastRequest = betRequestTimestamps.get(socket.id) || 0;
-    if (Date.now() - lastRequest < BET_REQUEST_COOLDOWN) {
-      return socket.emit("lobby:betFailed", "Please wait before placing another bet.");
-    }
-    betRequestTimestamps.set(socket.id, Date.now());
-
-    if (amount < MIN_BET || amount > MAX_BET) {
-      return socket.emit("lobby:betFailed", `Bet must be between ${MIN_BET} and ${MAX_BET} lamports.`);
-    }
-
-    try {
-      const playerBalance = await connection.getBalance(new PublicKey(player.walletAddress));
-      
-      if (playerBalance < amount + 5000) {
-        return socket.emit("lobby:betFailed", "Insufficient SOL balance for bet + fees");
-      }
-
-      const tx = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: new PublicKey(player.walletAddress),
-          toPubkey: TREASURY_WALLET_ADDRESS,
-          lamports: amount,
-        })
-      );
-
-      const { blockhash } = await connection.getLatestBlockhash();
-      
-      tx.recentBlockhash = blockhash;
-      tx.feePayer = new PublicKey(player.walletAddress);
-
-      const serializedTx = tx.serialize({ 
-        requireAllSignatures: false 
-      }).toString('base64');
-      
-      socket.emit("lobby:signatureRequest", { serializedTx, amount });
-    } catch (error) {
-      socket.emit("lobby:betFailed", "Failed to create transaction.");
-    }
-  });
-
-  socket.on("player:submitSignedBet", async ({ serializedTx, amount }) => {
-    const player = players[socket.id];
-    if (!player) {
-      return socket.emit("lobby:betFailed", "Player not found.");
-    }
-
-    const previousTopFighterIds = getTopFighterIds();
-
-    try {
-      const tx = Transaction.from(Buffer.from(serializedTx, 'base64'));
-      
-      const systemInstructions = tx.instructions.filter(instr => 
-        SystemProgram.programId.equals(instr.programId)
-      );
-      
-      if (systemInstructions.length === 0) {
-        throw new Error("No SystemProgram transfer instruction found");
-      }
-      
-      if (systemInstructions.length > 1) {
-        throw new Error("Transaction contains multiple SystemProgram instructions");
-      }
-      
-      const transferInstruction = systemInstructions[0];
-      const instructionData = transferInstruction.data;
-      
-      if (instructionData.length !== 12) {
-        throw new Error("Invalid instruction data length");
-      }
-      
-      const instructionType = instructionData.readUInt32LE(0);
-      if (instructionType !== 2) {
-        throw new Error("Not a transfer instruction");
-      }
-      
-      const lamports = Number(instructionData.readBigUInt64LE(4));
-      const fromPubkey = transferInstruction.keys[0].pubkey;
-      const toPubkey = transferInstruction.keys[1].pubkey;
-      
-      if (lamports !== amount) {
-        throw new Error(`Amount mismatch: expected ${amount}, got ${lamports}`);
-      }
-      
-      if (!fromPubkey.equals(new PublicKey(player.walletAddress))) {
-        throw new Error("Wrong sender wallet");
-      }
-      
-      if (!toPubkey.equals(TREASURY_WALLET_ADDRESS)) {
-        throw new Error("Wrong recipient wallet");
-      }
-
-      const signature = await connection.sendRawTransaction(tx.serialize(), {
-        skipPreflight: true,
-        preflightCommitment: 'confirmed'
-      });
-      
-      await connection.confirmTransaction(signature, 'confirmed');
-      
-
-      player.betAmount += amount;
-      player.lastBetTimestamp = Date.now();
-      
-      socket.emit("lobby:betVerified", { signature });
-      broadcastLobbyState();
-      checkAndManageCountdown(previousTopFighterIds);
-
-    } catch (error) {
-      
-      let errorMessage = "Transaction failed";
-      if (error.message.includes("insufficient")) {
-        errorMessage = "Insufficient SOL balance";
-      } else if (error.message.includes("blockhash")) {
-        errorMessage = "Transaction expired, please try again";
-      } else if (error.message.includes("Amount mismatch")) {
-        errorMessage = "Amount validation failed";
-      } else if (error.message.includes("Wrong sender") || error.message.includes("Wrong recipient")) {
-        errorMessage = "Invalid transaction addresses";
-      } else if (error.message.includes("multiple SystemProgram")) {
-        errorMessage = "Invalid transaction structure";
-      } else {
-        errorMessage = error.message;
-      }
-      
-      socket.emit("lobby:betFailed", errorMessage);
-    }
-  });
   
   socket.on("duel:shoot", () => {
     handleShoot(socket.id);

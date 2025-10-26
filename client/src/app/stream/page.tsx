@@ -7,6 +7,7 @@ import { useGameStore, Player } from "@/store/useGameStore";
 import { AsciiRenderer } from "@react-three/drei";
 import { MoneyTransferBreakdown } from "@/components/MoneyTransferBreakdown";
 import { TitleOverlay } from "@/components/TitleOverlay";
+import { formatTokenAmount } from "@/utils/FormatTokenAmount";
 
 const Loader = () => (
   <div className="absolute inset-0 z-50 bg-black flex items-center justify-center text-white text-2xl font-bold">
@@ -315,7 +316,7 @@ const StreamMessageDisplay = () => {
         setIsVisible(true);
         
         addTimer(() => {
-          setCurrentMessage(`Each receives ${individualPayout.toLocaleString()} Lamports`);
+          setCurrentMessage(`Each receives ${formatTokenAmount(individualPayout, true)}`);
           setIsDramatic(false);
           setIsVisible(true);
         }, 2000);
@@ -326,7 +327,7 @@ const StreamMessageDisplay = () => {
         setIsVisible(true);
         
         addTimer(() => {
-          setCurrentMessage(`+${roundWinner.pot.toLocaleString()} Lamports`);
+          setCurrentMessage(`+${formatTokenAmount(roundWinner.pot, true)}`);
           setIsDramatic(false);
           setIsVisible(true);
         }, 2000);
@@ -712,7 +713,7 @@ export default function StreamPage() {
                 <div className="font-mono text-center">
                   <div className="text-xs text-subtext1 mb-1">{/* TOTAL POT */}</div>
                   <div className="text-2xl font-bold text-amber tracking-wider">
-                    {roundPot.toLocaleString()} ◎
+                    {formatTokenAmount(roundPot, true)}
                   </div>
                 </div>
               </div>

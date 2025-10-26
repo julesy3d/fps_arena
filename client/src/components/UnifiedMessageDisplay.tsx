@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useGameStore } from "@/store/useGameStore";
+import { formatTokenAmount } from '@/utils/FormatTokenAmount';
 
 interface Message {
   text: string;
@@ -167,7 +168,7 @@ export const UnifiedMessageDisplay = () => {
         setIsVisible(true);
         
         addTimer(() => {
-          setCurrentMessage(`Each receives ${individualPayout.toLocaleString()} Lamports`);
+          setCurrentMessage(`Each receives ${formatTokenAmount(individualPayout, true)}`);
           setIsDramatic(false);
           setIsVisible(true);
         }, 2000);
@@ -182,7 +183,7 @@ export const UnifiedMessageDisplay = () => {
           setIsVisible(true);
           
           addTimer(() => {
-            setCurrentMessage(`+${roundWinner.pot.toLocaleString()} Lamports`);
+            setCurrentMessage(`+${formatTokenAmount(roundWinner.pot, true)}`);
             setIsDramatic(false);
             setIsVisible(true);
           }, 2000);
@@ -196,7 +197,7 @@ export const UnifiedMessageDisplay = () => {
           setIsVisible(true);
           
           addTimer(() => {
-            setCurrentMessage(`-${lostAmount.toLocaleString()} Lamports`);
+            setCurrentMessage(`-${formatTokenAmount(lostAmount, true)}`);
             setIsDramatic(false);
             setIsVisible(true);
           }, 2000);
