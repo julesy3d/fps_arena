@@ -1,77 +1,87 @@
-# 🤠 PotShot.gg - A High-Stakes Western Duel Game
+# potshot.gg
 
-**PotShot.gg** is a real-time, multiplayer dueling game where timing, rhythm, and nerve are key. Two players face off in a high-noon shootout where the first to make a mistake loses. The winner takes the entire pot, funded by cryptocurrency wagers.
+potshot.gg is a real-time, multiplayer dueling game centered on timing and rhythm. Players compete in a skill-based shootout where the winner is awarded a prize pot funded by cryptocurrency wagers.
 
 -----
 
-## \#\# Gameplay: The Duel
+## Gameplay
 
-The core of the game is a synchronized, multi-round duel that tests both reaction and rhythm.
+The core of the game is a synchronized, multi-round duel that tests player reaction and timing.
 
-### 1\. The Lobby (The Wager) 💰
+### 1\. The Lobby (Wager)
 
-Players connect their Solana wallets and place bets to enter the next duel. The top two bidders are selected as the fighters when the countdown ends. All bets are pooled into the prize pot.
+Players connect a Solana wallet and place a bet to enter the matchmaking pool. When the game countdown ends, the top two bidders are selected as fighters. All wagers are then pooled into the prize pot.
 
-### 2\. The Duel (The Fight) 🔫
+### 2\. The Duel (The Fight)
 
-The two fighters are transported to the dueling grounds. The gameplay unfolds in two main phases:
+The two fighters are transported to the dueling grounds. The duel consists of a continuous, round-based shooting phase:
 
-  * **Phase 1: The Draw**
+  * A **synchronized bar** appears, moving up and down in a rhythmic cycle.
+  * Players must click when the bar is within the designated **target zone** to land a successful shot.
+  * If a player fails to shoot before the bar completes its cycle, it is registered as a **miss** for that round.
+  * The bar's cycle **accelerates with each subsequent round**, progressively increasing the difficulty.
 
-      * After a tense, randomized pause, a **GONG** sounds.
-      * Both players have **1.5 seconds** to click and draw their weapon.
-      * Success in this phase is critical. Failing to draw gives your opponent a significant advantage.
-
-  * **Phase 2: The Aiming (Continuous Shooting)**
-
-      * A **synchronized bar** appears, moving up and down in a rhythmic cycle.
-      * Players must click when the bar is within the green **target zone (60%-80%)** to land a shot.
-      * If a player doesn't shoot before the bar passes 80%, they **auto-miss** the round.
-      * The bar **speeds up with each round**, making the timing progressively harder.
-
-### 3\. The Outcome 🏆
+### 3\. The Outcome
 
 A winner is decided based on the round's results:
 
-  * **One Hits, One Misses:** The player who hit wins the duel and takes **90% of the pot** (10% is a protocol fee).
-  * **Both Hit:** It's a **DODGE\!** Both players survive, and the duel advances to the next, faster round.
-  * **Both Miss:** The duel also advances to the next, faster round.
+  * **One Hit, One Miss:** The player who landed the shot wins the duel and takes the pot (less a 10% protocol fee).
+  * **Both Hit:** The round is declared a **DODGE**. Both players survive, and the duel advances to the next, faster round.
+  * **Both Miss:** The duel advances to the next, faster round.
 
-The duel continues with escalating speed until one player makes a mistake and a winner is declared.
+The duel continues with escalating speed until one player misses and a winner is declared.
 
 -----
 
-## \#\# Core Architecture
+## Core Architecture
 
-The game is built with a **server-authoritative** model to ensure fairness and prevent cheating, which is critical for a real-money game.
+The game is built with a server-authoritative model to ensure fairness and prevent cheating, which is critical for a real-money application. It uses a hybrid architecture to separate real-time game logic from HTTP-based Web3 operations.
 
 ### Technology Stack
 
   * **Client:** Next.js, React, Zustand, Three.js (`@react-three/fiber`), Tailwind CSS
-  * **Server:** Node.js, Express, Socket.IO
-  * **Blockchain:** Solana for wallet connections and payouts.
+  * **Game Server:** Node.js, Express, Socket.IO
+  * **Web3/API:** Vercel Serverless Functions
+  * **Database:** Supabase (PostgreSQL)
+  * **Blockchain:** Solana
+  * **Deployment:** Fly.io (Game Server), Vercel (Client & Web3/API)
 
-### Server Architecture (Node.js)
+### Architectural Model
 
-  * **State Machine:** Manages the game's state (`LOBBY`, `CINEMATIC`, `DRAW_PHASE`, `AIM_PHASE`, `POST_ROUND`).
-  * **Authoritative Timing:** The server is the single source of truth for all timing, including the GONG, draw window, and the synchronized bar's position.
-  * **Game Loop:** A `setInterval` loop runs at 60fps during the `AIM_PHASE` to calculate and broadcast the bar's position to all players simultaneously.
-  * **Event System:** Socket.IO is used for real-time communication. The server emits events like `duel:gong` to start the draw and `duel:barUpdate` to synchronize the aiming phase.
+#### Game Server (Fly.io)
 
-### Client Architecture (Next.js & React Three Fiber)
+A stateful Node.js application running on a persistent Fly.io virtual machine. This server handles all critical, low-latency game logic.
 
-  * **State Management:** A global Zustand store (`useGameStore`) manages the client-side state, reacting to events sent by the server.
-  * **Single Canvas Architecture:** A single, persistent `<Canvas>` component is used to render the 3D world. This prevents jarring reloads and ensures a stable rendering context between game states.
-  * **Component Structure:** The main `page.tsx` acts as a controller, conditionally rendering different 3D stages (`<DuelStage3D>`, `<DefaultStage3D>`) and 2D UI overlays (`<DuelUI>`, `<Lobby>`) based on the game's state.
+  * **State Machine:** Manages the core game state (`LOBBY`, `CINEMATIC`, `AIM_PHASE`, `POST_ROUND`).
+  * **Authoritative Timing:** Acts as the single source of truth for all game events and the synchronized bar's position.
+  * **Game Loop:** A `setInterval` loop runs at 60fps during the `AIM_PHASE` to broadcast the bar's position to clients via Socket.IO.
+  * **Database Writes:** Records all game results and state changes directly to the Supabase database.
+
+#### Web3/API (Vercel)
+
+A serverless Next.js application hosted on Vercel. It manages the client-facing application and all blockchain interactions.
+
+  * **Web3 Operations:** Vercel Serverless Functions handle all wallet interactions, including processing initial bets and managing final payouts.
+  * **HTTP/API:** Provides the primary API for user authentication and other non-real-time requests.
+  * This separation ensures that costly or slow blockchain transactions do not interfere with the real-time game loop.
+
+#### Client (Next.js & React Three Fiber)
+
+The client application is rendered by Next.js and Vercel.
+
+  * **State Management:** A global Zustand store (`useGameStore`) manages the client-side state, which is synchronized with the Game Server via Socket.IO events.
+  * **Single Canvas Architecture:** A single, persistent `<Canvas>` component from `@react-three/fiber` is used to render the 3D world, ensuring smooth visual transitions between game states.
 
 -----
 
-## \#\# Getting Started
+## Getting Started
 
 ### Prerequisites
 
   * Node.js (v18 or higher)
   * npm or a compatible package manager
+  * Access to a Supabase project
+  * Fly.io and Vercel accounts for deployment
 
 ### Setup
 
@@ -82,7 +92,7 @@ The game is built with a **server-authoritative** model to ensure fairness and p
     cd [your-repo-folder]
     ```
 
-2.  **Install Server Dependencies**
+2.  **Install Game Server Dependencies**
 
     ```bash
     cd server
@@ -98,29 +108,41 @@ The game is built with a **server-authoritative** model to ensure fairness and p
 
 ### Environment Variables
 
-You will need to create `.env.local` files for both the server and the client to store your secret keys and configuration.
+You will need to create `.env.local` files for both the server and the client.
 
-1.  **Server (`/server/.env.local`)**
+1.  **Game Server (`/server/.env.local`)**
+    This server requires credentials to write to your database.
 
     ```env
-    TREASURY_WALLET_ADDRESS=[Your-Solana-Treasury-Public-Key]
-    TREASURY_PRIVATE_KEY=[Your-Solana-Treasury-Secret-Key]
+    SUPABASE_URL=[Your-Supabase-Project-URL]
+    SUPABASE_SERVICE_ROLE_KEY=[Your-Supabase-Service-Role-Key]
     ```
 
 2.  **Client (`/client/.env.local`)**
-    The client needs to know the public URL of the server.
+    These variables are used by the Next.js application for both client-side logic and Vercel serverless functions.
 
     ```env
-    NEXT_PUBLIC_SERVER_URL=http://localhost:3001
+    # Public URL of your deployed Game Server (e.g., wss://your-app.fly.dev)
+    NEXT_PUBLIC_GAME_SERVER_URL=ws://localhost:3001
+
+    # Public Supabase credentials
+    NEXT_PUBLIC_SUPABASE_URL=[Your-Supabase-Project-URL]
+    NEXT_PUBLIC_SUPABASE_ANON_KEY=[Your-Supabase-Anon-Key]
+
+    # Public key for the treasury wallet
+    NEXT_PUBLIC_TREASURY_WALLET_ADDRESS=[Your-Solana-Treasury-Public-Key]
     ```
 
-    *Note: If running in a cloud environment like GitHub Codespaces, replace `http://localhost:3001` with the public URL for your server port.*
+3.  **Vercel Environment Variables**
+    For security, your treasury's private key must be set as a secret environment variable in your Vercel project settings, **not** in `.env.local`.
+
+      * `TREASURY_PRIVATE_KEY=[Your-Solana-Treasury-Secret-Key]`
 
 ### Running the Application
 
-You will need two separate terminals to run the server and the client.
+You will need two separate terminals to run the server and the client locally.
 
-1.  **Start the Server**
+1.  **Start the Game Server**
 
     ```bash
     cd server
