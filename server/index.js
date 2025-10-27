@@ -136,6 +136,7 @@ const DRAW_WINDOW = 1500;
 const MAIN_COUNTDOWN_SECONDS = 1;
 const OVERTIME_SECONDS = 10;
 const MIN_PLAYERS_TO_START = 2;
+const TREASURY_WALLET_ADDRESS = process.env.TREASURY_WALLET_ADDRESS;
 
 // ============================================
 // HELPER FUNCTIONS
@@ -592,6 +593,33 @@ const checkAndManageCountdown = (previousTopFighterIds = []) => {
   }
 };
 
+async function handlePayout(walletAddress, amount, roundId, transactionType, payoutTxId) {
+  const VERCEL_API_URL = process.env.VERCEL_API_URL;
+  const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET;
+
+  const response = await fetch(`${VERCEL_API_URL}/api/payout`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${INTERNAL_API_SECRET}`
+    },
+    body: JSON.stringify({ walletAddress, amount })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Payout API failed: ${await response.text()}`);
+  }
+
+  const payoutResult = await response.json();
+  const payoutSignature = payoutResult.signature;
+
+  await updateTransaction(payoutTxId, {
+    status: 'confirmed',
+    signature: payoutSignature,
+    confirmed_at: new Date()
+  });
+}
+
 /**
  * @function endRound
  * @description Handles the end of a round, including payouts and state reset.
@@ -611,7 +639,7 @@ const endRound = async (winner, isSplitPot = false) => {
         await logTransaction({
           round_id: roundId,
           transaction_type: 'protocol_fee',
-          recipient_wallet: TREASURY_KEYPAIR.publicKey.toBase58(),
+          recipient_wallet: TREASURY_WALLET_ADDRESS,
           amount: protocolFee,
           status: 'confirmed',
           signature: 'N/A',
@@ -635,28 +663,7 @@ const endRound = async (winner, isSplitPot = false) => {
             status: 'pending'
           });
 
-          const VERCEL_API_URL = process.env.VERCEL_API_URL;
-          const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET;
-
-          const response = await fetch(`${VERCEL_API_URL}/api/payout`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${INTERNAL_API_SECRET}`
-            },
-            body: JSON.stringify({
-              walletAddress: fighter.walletAddress,
-              amount: splitAmount
-            })
-          });
-          
-          if (payoutTxId) {
-            await updateTransaction(payoutTxId, {
-              status: 'confirmed',
-              signature: payoutSignature,
-              confirmed_at: new Date()
-            });
-          }
+          await handlePayout(fighter.walletAddress, splitAmount, roundId, 'payout_split', payoutTxId);
           
           const netGain = splitAmount - fighter.betAmount;
           incrementPlayerStat(fighter.walletAddress, "net_winnings", netGain);
@@ -687,7 +694,7 @@ const endRound = async (winner, isSplitPot = false) => {
         await logTransaction({
           round_id: roundId,
           transaction_type: 'protocol_fee',
-          recipient_wallet: TREASURY_KEYPAIR.publicKey.toBase58(),
+          recipient_wallet: TREASURY_WALLET_ADDRESS,
           amount: protocolFee,
           status: 'confirmed',
           signature: 'N/A',
@@ -707,28 +714,7 @@ const endRound = async (winner, isSplitPot = false) => {
             status: 'pending'
           });
 
-          const VERCEL_API_URL = process.env.VERCEL_API_URL;
-          const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET;
-
-          const response = await fetch(`${VERCEL_API_URL}/api/payout`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${INTERNAL_API_SECRET}`
-            },
-            body: JSON.stringify({
-              walletAddress: winner.walletAddress,
-              amount: winnerPayout
-            })
-          });
-          
-          if (payoutTxId) {
-            await updateTransaction(payoutTxId, {
-              status: 'confirmed',
-              signature: payoutSignature,
-              confirmed_at: new Date()
-            });
-          }
+          await handlePayout(winner.walletAddress, winnerPayout, roundId, 'payout', payoutTxId);
           
         } catch (error) {
           if (payoutTxId) {
@@ -802,11 +788,38 @@ const MIN_BET = 1000;
 const MAX_BET = 1000000000;
 
 io.on("connection", (socket) => {
+  betRequestTimestamps.set(socket.id, {
+    lastAuthAttempt: 0,
+    authAttemptCount: 0
+  });
+
   socket.emit("game:phaseChange", { phase: gamePhase });
   socket.emit("lobby:state", players);
   socket.emit("lobby:countdown", lobbyCountdown);
 
 socket.on("player:requestChallenge", () => {
+  const now = Date.now();
+  const socketLimits = betRequestTimestamps.get(socket.id);
+
+  if (socketLimits) {
+    const timeSinceLastAttempt = now - socketLimits.lastAuthAttempt;
+
+    if (timeSinceLastAttempt < BET_REQUEST_COOLDOWN) {
+      socket.emit("auth:rateLimited", {
+        message: `Wait ${Math.ceil((BET_REQUEST_COOLDOWN - timeSinceLastAttempt) / 1000)}s`
+      });
+      return;
+    }
+
+    socketLimits.lastAuthAttempt = now;
+    socketLimits.authAttemptCount += 1;
+
+    if (socketLimits.authAttemptCount > 10) {
+      socket.disconnect(true);
+      return;
+    }
+  }
+
   const message = generateChallengeMessage(socket.id);
   socketChallenges.set(socket.id, {
     message,
@@ -926,6 +939,7 @@ socket.on("player:joinWithWallet", async ({ walletAddress, signature, message })
 
   socket.on("disconnect", () => {
       
+    betRequestTimestamps.delete(socket.id);
     socketChallenges.delete(socket.id);
 
     if (players[socket.id]) {
@@ -975,6 +989,17 @@ setInterval(() => {
     }
   }
 }, 5 * 60 * 1000);
+
+setInterval(() => {
+  const now = Date.now();
+  const tenMinutes = 10 * 60 * 1000;
+
+  for (const [socketId, limits] of betRequestTimestamps.entries()) {
+    if (now - limits.lastAuthAttempt > tenMinutes) {
+      betRequestTimestamps.delete(socketId);
+    }
+  }
+}, 10 * 60 * 1000);
 
 server.listen(PORT, "0.0.0.0", () =>
   console.log(`🚀 Server listening on port ${PORT}`),
