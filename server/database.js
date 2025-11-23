@@ -123,3 +123,41 @@ export async function updateTransaction(txId, updates) {
     console.error('Failed to update transaction:', error);
   }
 }
+
+/**
+ * Checks if a bet transaction signature has already been used.
+ * @param {string} signature The transaction signature.
+ * @returns {Promise<boolean>} True if the signature exists, false otherwise.
+ */
+export async function checkSignatureExists(signature) {
+  const { data, error } = await supabase
+    .from('bet_transactions')
+    .select('signature')
+    .eq('signature', signature)
+    .single();
+
+  if (error && error.code !== 'PGRST116') { // PGRST116 is "Row not found"
+    console.error('Error checking signature:', error);
+    // Fail closed: if DB error, assume it exists to prevent replay
+    return true;
+  }
+
+  return !!data;
+}
+
+/**
+ * Logs a bet transaction to prevent replay attacks.
+ * @param {string} signature The transaction signature.
+ * @param {string} walletAddress The player's wallet address.
+ * @param {number} amount The amount of the bet.
+ */
+export async function logBetTransaction(signature, walletAddress, amount) {
+  const { error } = await supabase
+    .from('bet_transactions')
+    .insert([{ signature, wallet_address: walletAddress, amount }]);
+
+  if (error) {
+    console.error('Failed to log bet transaction:', error);
+    throw new Error('Failed to log bet transaction');
+  }
+}
