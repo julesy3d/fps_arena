@@ -767,165 +767,36 @@ const endRound = async (winner, isSplitPot = false) => {
     io.emit("game:phaseChange", {
       phase: "POST_ROUND",
       winnerData: { name: winner ? winner.name : "DRAW", pot: winnerPayout },
-      const VERCEL_API_URL = process.env.VERCEL_API_URL;
-      const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET;
-
-      const response = await fetch(`${VERCEL_API_URL}/api/payout`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${INTERNAL_API_SECRET}`
-        },
-        body: JSON.stringify({
-          walletAddress: fighter.walletAddress,
-          amount: splitAmount
-        })
-      });
-
-      if(payoutTxId) {
-        await updateTransaction(payoutTxId, {
-          status: 'confirmed',
-          signature: payoutSignature,
-          confirmed_at: new Date()
-        });
-      }
-
-        const netGain = splitAmount - fighter.betAmount;
-      incrementPlayerStat(fighter.walletAddress, "net_winnings", netGain);
-
-  } catch (error) {
-    if (payoutTxId) {
-      await updateTransaction(payoutTxId, {
-        status: 'failed',
-        error_message: error.message
-      });
-    }
-  }
-}
-
-io.emit("game:phaseChange", {
-  phase: "POST_ROUND",
-  winnerData: {
-    name: "DRAW - POT SPLIT",
-    pot: splitAmount * 2,
-    isSplit: true
-  },
-});
-
-  } else {
-  const winnerPayout = Math.floor(roundPot * 0.9);
-
-  try {
-    await logTransaction({
-      round_id: roundId,
-      transaction_type: 'protocol_fee',
-      recipient_wallet: TREASURY_KEYPAIR.publicKey.toBase58(),
-      amount: protocolFee,
-      status: 'confirmed',
-      signature: 'N/A',
-      confirmed_at: new Date()
     });
-  } catch (error) {
   }
 
-  if (winner && winnerPayout > 0) {
-    let payoutTxId = null;
-    try {
-      payoutTxId = await logTransaction({
-        round_id: roundId,
-        transaction_type: 'payout',
-        recipient_wallet: winner.walletAddress,
-        amount: winnerPayout,
-        status: 'pending'
-      });
+  setTimeout(async () => {
+    gamePhase = "LOBBY";
 
-      const VERCEL_API_URL = process.env.VERCEL_API_URL;
-      const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET;
-
-      const response = await fetch(`${VERCEL_API_URL}/api/payout`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${INTERNAL_API_SECRET}`
-        },
-        body: JSON.stringify({
-          walletAddress: winner.walletAddress,
-          amount: winnerPayout
-        })
-      });
-
-      if (payoutTxId) {
-        await updateTransaction(payoutTxId, {
-          status: 'confirmed',
-          signature: payoutSignature,
-          confirmed_at: new Date()
-        });
-      }
-
-    } catch (error) {
-      if (payoutTxId) {
-        await updateTransaction(payoutTxId, {
-          status: 'failed',
-          error_message: error.message
-        });
-      }
-    }
-  }
-
-  if (winner) {
-    try {
-      incrementPlayerStat(winner.walletAddress, "wins", 1);
-      const netGain = winnerPayout - winner.betAmount;
-      incrementPlayerStat(winner.walletAddress, "net_winnings", netGain);
-    } catch (error) {
-    }
-  }
-
-  const fighterIdsAtStart = new Set(activeFighterIds);
-  fighterIdsAtStart.forEach((fighterId) => {
-    const fighter = Object.values(players).find(p => p.id === fighterId);
-    if (fighter && (!winner || fighter.id !== winner.id)) {
+    for (const p of Object.values(players)) {
       try {
-        incrementPlayerStat(fighter.walletAddress, "deaths", 1);
-        incrementPlayerStat(fighter.walletAddress, "net_winnings", -fighter.betAmount);
+        const latestStats = await getPlayerStats(p.walletAddress);
+        if (latestStats && players[p.id]) {
+          players[p.id].betAmount = 0;
+          players[p.id].lastBetTimestamp = null;
+          players[p.id].stats = {
+            kills: latestStats.kills,
+            deaths: latestStats.deaths,
+            wins: latestStats.wins,
+            totalGamesPlayed: latestStats.total_games_played,
+            netWinnings: latestStats.net_winnings
+          };
+        }
       } catch (error) {
       }
     }
-  });
 
-  io.emit("game:phaseChange", {
-    phase: "POST_ROUND",
-    winnerData: { name: winner ? winner.name : "DRAW", pot: winnerPayout },
-  });
-}
-
-setTimeout(async () => {
-  gamePhase = "LOBBY";
-
-  for (const p of Object.values(players)) {
-    try {
-      const latestStats = await getPlayerStats(p.walletAddress);
-      if (latestStats && players[p.id]) {
-        players[p.id].betAmount = 0;
-        players[p.id].lastBetTimestamp = null;
-        players[p.id].stats = {
-          kills: latestStats.kills,
-          deaths: latestStats.deaths,
-          wins: latestStats.wins,
-          totalGamesPlayed: latestStats.total_games_played,
-          netWinnings: latestStats.net_winnings
-        };
-      }
-    } catch (error) {
-    }
-  }
-
-  activeFighterIds.clear();
-  duelData = {};
-  io.emit("game:phaseChange", { phase: "LOBBY" });
-  broadcastLobbyState();
-  checkAndManageCountdown();
-}, 10000);
+    activeFighterIds.clear();
+    duelData = {};
+    io.emit("game:phaseChange", { phase: "LOBBY" });
+    broadcastLobbyState();
+    checkAndManageCountdown();
+  }, 10000);
 };
 
 const betRequestTimestamps = new Map();
@@ -943,7 +814,6 @@ io.on("connection", (socket) => {
   socket.emit("lobby:state", players);
   socket.emit("lobby:countdown", lobbyCountdown);
 
-<<<<<<< HEAD
   socket.on("player:requestChallenge", () => {
     const now = Date.now();
     const socketLimits = betRequestTimestamps.get(socket.id);
@@ -971,194 +841,183 @@ io.on("connection", (socket) => {
     socketChallenges.set(socket.id, {
       message,
       timestamp: Date.now()
-=======
-  socket.on("player:requestChallenge", () => {
-    const message = generateChallengeMessage(socket.id);
-    socketChallenges.set(socket.id, {
-      message,
-      timestamp: Date.now()
     });
 
     socket.emit("player:authChallenge", { message });
->>>>>>> 5f4bc9f (Include server security fixes)
-    });
-
-    socket.on("player:joinWithWallet", async ({ walletAddress, signature, message }) => {
-      try {
-        // 1. Verify all required fields are present
-        if (!walletAddress || !signature || !message) {
-          return socket.emit("lobby:joinFailed", "Missing authentication data");
-        }
-
-        // 2. Check if this wallet is already connected
-        if (Object.values(players).find(p => p.walletAddress === walletAddress)) {
-          return socket.emit("lobby:joinFailed", "This wallet is already connected");
-        }
-
-        // 3. Verify the challenge exists and matches
-        const challenge = socketChallenges.get(socket.id);
-        if (!challenge || challenge.message !== message) {
-          return socket.emit("lobby:joinFailed", "Invalid challenge");
-        }
-
-        // 4. Verify the challenge is fresh (not a replay attack)
-        if (!isChallengeFresh(message)) {
-          socketChallenges.delete(socket.id);
-          return socket.emit("lobby:joinFailed", "Challenge expired");
-        }
-
-        // 5. Cryptographically verify the signature
-        const isValid = verifyWalletSignature(walletAddress, signature, message);
-        if (!isValid) {
-          socketChallenges.delete(socket.id);
-          return socket.emit("lobby:joinFailed", "Invalid wallet signature");
-        }
-
-        // 6. Clean up the used challenge
-        socketChallenges.delete(socket.id);
-
-        // 7. Signature verified! Now we can trust the wallet address
-        const playerData = await getPlayerStats(walletAddress);
-        if (!playerData) {
-          return socket.emit("lobby:joinFailed", "Failed to fetch player data");
-        }
-
-        let playerName = playerData.username || "unknown player";
-
-        players[socket.id] = {
-          id: socket.id,
-          walletAddress: walletAddress,
-          name: playerName,
-          role: "CONTENDER",
-          betAmount: 0,
-          lastBetTimestamp: null,
-          position: [0, 0, 0],
-          rotation: 0,
-          stats: {
-            kills: playerData.kills,
-            deaths: playerData.deaths,
-            wins: playerData.wins,
-            totalGamesPlayed: playerData.total_games_played,
-            netWinnings: playerData.net_winnings
-          }
-        };
-
-        socket.emit("lobby:joined", { name: players[socket.id].name });
-        broadcastLobbyState();
-
-      } catch (error) {
-        console.error('Wallet authentication error:', error);
-        socket.emit("lobby:joinFailed", "Authentication failed");
-      }
-    });
-
-    socket.on("player:setName", (playerName) => {
-      const player = players[socket.id];
-      if (player) {
-        try {
-          player.name = playerName;
-          updatePlayerStats(player.walletAddress, { username: playerName });
-          broadcastLobbyState();
-        } catch (error) {
-        }
-      }
-    });
-
-
-
-    socket.on("duel:shoot", () => {
-      handleShoot(socket.id);
-    });
-
-    socket.on("duel:playerReady", () => {
-      const playerId = socket.id;
-      if (duelData[playerId]) {
-        duelData[playerId].isReady = true;
-
-        const fighterIds = Array.from(activeFighterIds);
-        const allReady = fighterIds.every(id => duelData[id]?.isReady);
-
-        if (allReady && duelState === 'WAITING') {
-          duelState = 'CINEMATIC';
-
-          io.emit("duel:bothReady");
-
-          const gongDelay = 27000 + Math.random() * 5000;
-          setTimeout(() => {
-            sendGong();
-          }, gongDelay);
-        }
-      }
-    });
-
-    socket.on("disconnect", () => {
-<<<<<<< HEAD
-
-      betRequestTimestamps.delete(socket.id);
-=======
-
->>>>>>> 5f4bc9f (Include server security fixes)
-      socketChallenges.delete(socket.id);
-
-      if (players[socket.id]) {
-
-        if (
-          (duelState === "DRAW_PHASE" || duelState === "AIM_PHASE") &&
-          activeFighterIds.has(socket.id)
-        ) {
-          players[socket.id].health = 0;
-
-          const remainingFighters = Array.from(activeFighterIds).filter(id =>
-            id !== socket.id && players[id]
-          );
-
-          if (remainingFighters.length === 1) {
-            endDuel("WINNER", players[remainingFighters[0]]);
-          }
-        }
-
-        delete players[socket.id];
-        broadcastLobbyState();
-        checkAndManageCountdown(getTopFighterIds());
-      }
-    });
-
-    socket.on("duel:requestAIMode", () => {
-      const requesterId = socket.id;
-
-      if (duelData[requesterId]) {
-        duelData[requesterId].isAI = true;
-
-        const requesterSocket = io.sockets.sockets.get(requesterId);
-        if (requesterSocket) {
-          requesterSocket.emit("duel:aiModeConfirmed", { aiPlayerId: requesterId });
-        }
-      }
-    });
   });
 
-  setInterval(() => {
-    const now = Date.now();
-    const fiveMinutes = 5 * 60 * 1000;
+  socket.on("player:joinWithWallet", async ({ walletAddress, signature, message }) => {
+    try {
+      // 1. Verify all required fields are present
+      if (!walletAddress || !signature || !message) {
+        return socket.emit("lobby:joinFailed", "Missing authentication data");
+      }
 
-    for (const [socketId, challenge] of socketChallenges.entries()) {
-      if (now - challenge.timestamp > fiveMinutes) {
-        socketChallenges.delete(socketId);
+      // 2. Check if this wallet is already connected
+      if (Object.values(players).find(p => p.walletAddress === walletAddress)) {
+        return socket.emit("lobby:joinFailed", "This wallet is already connected");
+      }
+
+      // 3. Verify the challenge exists and matches
+      const challenge = socketChallenges.get(socket.id);
+      if (!challenge || challenge.message !== message) {
+        return socket.emit("lobby:joinFailed", "Invalid challenge");
+      }
+
+      // 4. Verify the challenge is fresh (not a replay attack)
+      if (!isChallengeFresh(message)) {
+        socketChallenges.delete(socket.id);
+        return socket.emit("lobby:joinFailed", "Challenge expired");
+      }
+
+      // 5. Cryptographically verify the signature
+      const isValid = verifyWalletSignature(walletAddress, signature, message);
+      if (!isValid) {
+        socketChallenges.delete(socket.id);
+        return socket.emit("lobby:joinFailed", "Invalid wallet signature");
+      }
+
+      // 6. Clean up the used challenge
+      socketChallenges.delete(socket.id);
+
+      // 7. Signature verified! Now we can trust the wallet address
+      const playerData = await getPlayerStats(walletAddress);
+      if (!playerData) {
+        return socket.emit("lobby:joinFailed", "Failed to fetch player data");
+      }
+
+      let playerName = playerData.username || "unknown player";
+
+      players[socket.id] = {
+        id: socket.id,
+        walletAddress: walletAddress,
+        name: playerName,
+        role: "CONTENDER",
+        betAmount: 0,
+        lastBetTimestamp: null,
+        position: [0, 0, 0],
+        rotation: 0,
+        stats: {
+          kills: playerData.kills,
+          deaths: playerData.deaths,
+          wins: playerData.wins,
+          totalGamesPlayed: playerData.total_games_played,
+          netWinnings: playerData.net_winnings
+        }
+      };
+
+      socket.emit("lobby:joined", { name: players[socket.id].name });
+      broadcastLobbyState();
+
+    } catch (error) {
+      console.error('Wallet authentication error:', error);
+      socket.emit("lobby:joinFailed", "Authentication failed");
+    }
+  });
+
+  socket.on("player:setName", (playerName) => {
+    const player = players[socket.id];
+    if (player) {
+      try {
+        player.name = playerName;
+        updatePlayerStats(player.walletAddress, { username: playerName });
+        broadcastLobbyState();
+      } catch (error) {
       }
     }
-  }, 5 * 60 * 1000);
+  });
 
-  setInterval(() => {
-    const now = Date.now();
-    const tenMinutes = 10 * 60 * 1000;
 
-    for (const [socketId, limits] of betRequestTimestamps.entries()) {
-      if (now - limits.lastAuthAttempt > tenMinutes) {
-        betRequestTimestamps.delete(socketId);
+
+  socket.on("duel:shoot", () => {
+    handleShoot(socket.id);
+  });
+
+  socket.on("duel:playerReady", () => {
+    const playerId = socket.id;
+    if (duelData[playerId]) {
+      duelData[playerId].isReady = true;
+
+      const fighterIds = Array.from(activeFighterIds);
+      const allReady = fighterIds.every(id => duelData[id]?.isReady);
+
+      if (allReady && duelState === 'WAITING') {
+        duelState = 'CINEMATIC';
+
+        io.emit("duel:bothReady");
+
+        const gongDelay = 27000 + Math.random() * 5000;
+        setTimeout(() => {
+          sendGong();
+        }, gongDelay);
       }
     }
-  }, 10 * 60 * 1000);
+  });
 
-  server.listen(PORT, "0.0.0.0", () =>
-    console.log(`🚀 Server listening on port ${PORT}`),
-  );
+  socket.on("disconnect", () => {
+
+    betRequestTimestamps.delete(socket.id);
+    socketChallenges.delete(socket.id);
+
+    if (players[socket.id]) {
+
+      if (
+        (duelState === "DRAW_PHASE" || duelState === "AIM_PHASE") &&
+        activeFighterIds.has(socket.id)
+      ) {
+        players[socket.id].health = 0;
+
+        const remainingFighters = Array.from(activeFighterIds).filter(id =>
+          id !== socket.id && players[id]
+        );
+
+        if (remainingFighters.length === 1) {
+          endDuel("WINNER", players[remainingFighters[0]]);
+        }
+      }
+
+      delete players[socket.id];
+      broadcastLobbyState();
+      checkAndManageCountdown(getTopFighterIds());
+    }
+  });
+
+  socket.on("duel:requestAIMode", () => {
+    const requesterId = socket.id;
+
+    if (duelData[requesterId]) {
+      duelData[requesterId].isAI = true;
+
+      const requesterSocket = io.sockets.sockets.get(requesterId);
+      if (requesterSocket) {
+        requesterSocket.emit("duel:aiModeConfirmed", { aiPlayerId: requesterId });
+      }
+    }
+  });
+});
+
+setInterval(() => {
+  const now = Date.now();
+  const fiveMinutes = 5 * 60 * 1000;
+
+  for (const [socketId, challenge] of socketChallenges.entries()) {
+    if (now - challenge.timestamp > fiveMinutes) {
+      socketChallenges.delete(socketId);
+    }
+  }
+}, 5 * 60 * 1000);
+
+setInterval(() => {
+  const now = Date.now();
+  const tenMinutes = 10 * 60 * 1000;
+
+  for (const [socketId, limits] of betRequestTimestamps.entries()) {
+    if (now - limits.lastAuthAttempt > tenMinutes) {
+      betRequestTimestamps.delete(socketId);
+    }
+  }
+}, 10 * 60 * 1000);
+
+server.listen(PORT, "0.0.0.0", () =>
+  console.log(`🚀 Server listening on port ${PORT}`),
+);
