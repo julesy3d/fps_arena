@@ -64,16 +64,33 @@ app.post('/internal/confirm-bet', async (req, res) => {
 
   const previousTopFighterIds = getTopFighterIds();
 
-  player.betAmount += amount;
-  player.lastBetTimestamp = Date.now();
+  if (gamePhase === "IN_ROUND" || gamePhase === "POST_ROUND") {
+    // Queue the bet for the next round
+    const currentPending = pendingBets.get(socketId) || 0;
+    pendingBets.set(socketId, currentPending + amount);
 
-  const socket = io.sockets.sockets.get(socketId);
-  if (socket) {
-    socket.emit("lobby:betVerified", { signature: txSignature });
+    // Notify player their bet is queued
+    const socket = io.sockets.sockets.get(socketId);
+    if (socket) {
+      socket.emit("lobby:betQueued", {
+        amount,
+        totalQueued: currentPending + amount,
+        signature: txSignature
+      });
+    }
+  } else {
+    // Apply immediately if in LOBBY
+    player.betAmount += amount;
+    player.lastBetTimestamp = Date.now();
+
+    const socket = io.sockets.sockets.get(socketId);
+    if (socket) {
+      socket.emit("lobby:betVerified", { signature: txSignature });
+    }
+
+    broadcastLobbyState();
+    checkAndManageCountdown(previousTopFighterIds);
   }
-
-  broadcastLobbyState();
-  checkAndManageCountdown(previousTopFighterIds);
 
   res.status(200).send({ success: true });
 });
@@ -102,6 +119,7 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 3001;
 let players = {};
+let pendingBets = new Map(); // Store bets for the NEXT round if game is in progress
 
 // Track challenge messages per socket to prevent replay attacks
 const socketChallenges = new Map(); // Map<socketId, { message: string, timestamp: number }>
@@ -790,6 +808,15 @@ const endRound = async (winner, isSplitPot = false) => {
       } catch (error) {
       }
     }
+
+    // Apply pending bets that were queued during the game
+    for (const [socketId, amount] of pendingBets.entries()) {
+      if (players[socketId]) {
+        players[socketId].betAmount = amount;
+        players[socketId].lastBetTimestamp = Date.now();
+      }
+    }
+    pendingBets.clear();
 
     activeFighterIds.clear();
     duelData = {};
